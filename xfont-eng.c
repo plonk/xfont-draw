@@ -50,37 +50,47 @@ int WordWidth(XFontStruct *font, const char *str, int len)
 
 void Redraw(Display *disp, Window win, GC gc, XFontStruct *font, const char *msg)
 {
-	const int LEFT_MARGIN = 50;
-	const int LINE_HEIGHT = 20;
-	const int RIGHT_MARGIN = 500;
-	const int TOP_MARGIN = 50;
+    XWindowAttributes attrs;
 
-	XClearWindow(disp, win);
-	size_t start = 0, next;
-	int x = LEFT_MARGIN; // left margin
-	int y = TOP_MARGIN + font->ascent;
+    XGetWindowAttributes(disp, win, &attrs);
+
+    const int LEFT_MARGIN = 50;
+    const int LINE_HEIGHT = 20;
+    const int RIGHT_MARGIN = attrs.width - LEFT_MARGIN;
+    const int TOP_MARGIN = 50;
+
+    if (RIGHT_MARGIN < 10) {
+	fprintf(stderr, "Viewport size too small.\n");
+	return;
+    }
+
+    XClearWindow(disp, win);
+    size_t start = 0, next;
+    int x = LEFT_MARGIN; // left margin
+    int y = TOP_MARGIN + font->ascent;
 	
-	while (NextToken(msg, start, &next)) {
-	    size_t len = next - start;
-	    int width = WordWidth(font, msg + start, len);
+    while (NextToken(msg, start, &next)) {
+	size_t len = next - start;
+	int width = WordWidth(font, msg + start, len);
 
-	    if (x + width > RIGHT_MARGIN) {
-		x = LEFT_MARGIN;
-		y += LINE_HEIGHT;
+	if (x + width > RIGHT_MARGIN && // このトークンはこの行に入らない。
+	    x != LEFT_MARGIN) { // 最初の単語単語が入らない場合ははみ出てもこの行に表示する。
+	    x = LEFT_MARGIN;
+	    y += LINE_HEIGHT;
 
-		if (isspace(msg[start])) // 空白位置で改行する場合は描画しない。
-		    goto nextIter;
-	    }
-	    XDrawString(disp, win, gc,
-			x,	// X座標
-			y,	// Y座標。ベースライン
-			msg + start,
-			len);
-	    x += width;
-
-	nextIter:
-	    start = next;
+	    if (isspace(msg[start])) // 空白位置で改行する場合は描画しない。
+		goto nextIter;
 	}
+	XDrawString(disp, win, gc,
+		    x,	// X座標
+		    y,	// Y座標。ベースライン
+		    msg + start,
+		    len);
+	x += width;
+
+    nextIter:
+	start = next;
+    }
 }
 
 void Initialize(Display **pdisp, Window *pwin, GC *pgc, XFontStruct **pfont)
