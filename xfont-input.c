@@ -1,7 +1,7 @@
+#define PROGRAM_NAME "xfont-input"
 /**
- * xfont-double-buffering: 複数の文字集合のフォントを使いわけるテキストビューア
+ * キーボードから文字を入力できるテキストビューア。
  */
-#define PROGRAM_NAME "xfont-double-buffering"
 
 #include <assert.h>
 #include <ctype.h>
@@ -125,19 +125,28 @@ void InspectChar(XChar2b ch)
     printf("byte1 = 0x%02x, byte2 = 0x%02x\n", ch.byte1, ch.byte2);
 }
 
-// 次のページの開始位置、あるいは文書の終端 (== text_length) を返す。
-size_t FillPage(size_t start, Page *page, bool draw)
-{
+
+// ページのサイズ。
+static int LEFT_MARGIN;
+static int RIGHT_MARGIN;
+static int TOP_MARGIN;
+static int BOTTOM_MARGIN;
+
+void GetWindowSize() {
     XWindowAttributes attrs;
     XGetWindowAttributes(disp, win, &attrs);
 
-    // ページのサイズ。
-    const int LEFT_MARGIN	= 50;
-    const int RIGHT_MARGIN	= attrs.width - LEFT_MARGIN;
-    const int TOP_MARGIN	= 50;
-    const int BOTTOM_MARGIN	= attrs.height - TOP_MARGIN;
+    LEFT_MARGIN		= 50;
+    RIGHT_MARGIN	= attrs.width - LEFT_MARGIN;
+    TOP_MARGIN		= 50;
+    BOTTOM_MARGIN	= attrs.height - TOP_MARGIN;
+}
 
-    const XChar2b sp = { 0x00, 0x21 };
+// 次のページの開始位置、あるいは文書の終端 (== text_length) を返す。
+size_t FillPage(size_t start, Page *page, bool draw)
+{
+
+    const XChar2b sp = { 0x00, ' ' };
     const int EM = GetCharWidth(sp);
 
     // 行の高さ。
@@ -180,7 +189,7 @@ size_t FillPage(size_t start, Page *page, bool draw)
 		XChar2b font_code;
 		XFontStruct *font = SelectFont(text[i], &font_code);
 		GC gc = XCreateGC(disp, back_buffer, 0, NULL);
-		InspectChar(font_code);
+		// InspectChar(font_code);
 		XCopyGC(disp, default_gc, GCForeground | GCBackground, gc);
 		XSetFont(disp, gc, font->fid);
 		XDrawString16(disp, back_buffer, gc,
@@ -244,6 +253,7 @@ size_t FillPage(size_t start, Page *page, bool draw)
 // 全てを再計算する。
 void Recalculate()
 {
+    GetWindowSize();
     Paginate();
 }
 
@@ -269,32 +279,30 @@ Page *GetCurrentPage()
 
 void MarkMargins()
 {
-    XWindowAttributes attrs;
-    XGetWindowAttributes(disp, win, &attrs);
-
     // ページのサイズ。
-    const int LEFT_MARGIN	= 50 - 1;
-    const int RIGHT_MARGIN	= attrs.width - LEFT_MARGIN + 1;
-    const int TOP_MARGIN	= 50 - 1;
-    const int BOTTOM_MARGIN	= attrs.height - TOP_MARGIN + 1;
+    const int lm	= LEFT_MARGIN - 1;
+    const int rm	= RIGHT_MARGIN + 1;
+    const int tm	= TOP_MARGIN - 1;
+    const int bm	= BOTTOM_MARGIN + 1;
 
+    // マークを構成する線分の長さ。
     const int len = 10;
 
     // _|
-    XDrawLine(disp, back_buffer, margin_gc, LEFT_MARGIN - len, TOP_MARGIN, LEFT_MARGIN, TOP_MARGIN); // horizontal
-    XDrawLine(disp, back_buffer, margin_gc, LEFT_MARGIN, TOP_MARGIN - len, LEFT_MARGIN, TOP_MARGIN); // vertical
+    XDrawLine(disp, back_buffer, margin_gc, lm - len, tm, lm, tm); // horizontal
+    XDrawLine(disp, back_buffer, margin_gc, lm, tm - len, lm, tm); // vertical
 
     //        |_
-    XDrawLine(disp, back_buffer, margin_gc, RIGHT_MARGIN, TOP_MARGIN, RIGHT_MARGIN + len, TOP_MARGIN);
-    XDrawLine(disp, back_buffer, margin_gc, RIGHT_MARGIN, TOP_MARGIN - len, RIGHT_MARGIN, TOP_MARGIN);
+    XDrawLine(disp, back_buffer, margin_gc, rm, tm, rm + len, tm);
+    XDrawLine(disp, back_buffer, margin_gc, rm, tm - len, rm, tm);
 
     // -|
-    XDrawLine(disp, back_buffer, margin_gc, LEFT_MARGIN - len, BOTTOM_MARGIN, LEFT_MARGIN, BOTTOM_MARGIN);
-    XDrawLine(disp, back_buffer, margin_gc, LEFT_MARGIN, BOTTOM_MARGIN, LEFT_MARGIN, BOTTOM_MARGIN + len);
+    XDrawLine(disp, back_buffer, margin_gc, lm - len, bm, lm, bm);
+    XDrawLine(disp, back_buffer, margin_gc, lm, bm, lm, bm + len);
 
     //        |-
-    XDrawLine(disp, back_buffer, margin_gc, RIGHT_MARGIN, BOTTOM_MARGIN, RIGHT_MARGIN + len, BOTTOM_MARGIN);
-    XDrawLine(disp, back_buffer, margin_gc, RIGHT_MARGIN, BOTTOM_MARGIN, RIGHT_MARGIN, BOTTOM_MARGIN + len);
+    XDrawLine(disp, back_buffer, margin_gc, rm, bm, rm + len, bm);
+    XDrawLine(disp, back_buffer, margin_gc, rm, bm, rm, bm + len);
 }
 
 void Redraw()
