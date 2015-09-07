@@ -1,6 +1,56 @@
 #include "util.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
+
+// m を n 個の整数l a[0] ~ a[n-1] に分割する。
+void Distribute(int m, size_t n, int a[])
+{
+    int i;
+
+    if (m < 0) {
+	// 負数は扱いたくない。
+	for (i = 0; i < n; i++)
+	    a[i] = 0;
+	return;
+    }
+
+    int q = m / n;
+
+    for (i = 0; i < n; i++)
+	a[i] = q;
+
+    int r = m % n;
+
+    i = 0;
+    while (r > 0) {
+	a[i]++;
+	r--;
+	i = (i + 1) % n;
+    }
+}
+
+// str の  start 位置からトークン(単語あるいは空白)を切り出す。
+// トークンを構成する最後の文字の次の位置が *end に設定される。
+// トークンが読み出せた場合は 1、さもなくば 0 を返す。
+int NextToken(const char *str, size_t start, size_t *end)
+{
+    size_t index = start;
+
+    /* トークナイズするものがない */
+    if (str[index] == '\0')
+	return 0;
+
+    if (isspace(str[index])) {
+	index++;
+    } else {
+	index++;
+	while (str[index] && !isspace(str[index]))
+	    index++;
+    }
+    *end = index;
+    return 1;
+}
 
 XCharStruct *GetCharInfo(XFontStruct *font, unsigned char byte)
 {
@@ -36,4 +86,14 @@ void InspectCharStruct(XCharStruct character)  /* struct copy */
     SHOW("%hd", descent);
     SHOW("%hu", attributes);
 #undef SHOW
+}
+
+int int_max(int a, int b)
+{
+    return (a > b) ? a : b;
+}
+
+int int_min(int a, int b)
+{
+    return (a < b) ? a : b;
 }

@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <X11/Xlib.h>
 
+Display *disp;
+
 void InspectCharStruct(XCharStruct character)  /* struct copy */
 {
 #define SHOW(fmt, member) printf("\t" #member " = " fmt "\n", character.member)
@@ -55,6 +57,58 @@ void InspectPerChar(XCharStruct per_char[],
     }
 }
 
+char *string_properties[] = {
+    "FONTNAME_REGISTRY",
+    "FOUNDRY",
+    "FAMILY_NAME",
+    "WEIGHT_NAME",
+    "SLANT",
+    "SPACING",
+    "CHARSET_REGISTRY",
+    "CHARSET_ENCODING",
+    "COPYRIGHT",
+    "SETWIDTH_NAME",
+    "ADD_STYLE_NAME",
+    "FONT",
+    "RESOLUTION",
+    NULL
+};
+
+#include <stdbool.h>
+#include <string.h>
+
+bool IsStringProperty(const char *name)
+{
+    char **pp = string_properties;
+
+    while (*pp != NULL) {
+	if (strcmp(name, *pp) == 0) 
+	    return true;
+	pp++;
+    } 
+    return false;
+}
+
+void InspectProperties(XFontStruct *font,
+		       XFontProp props[],
+		       int n_properties)
+{
+    int i;
+
+    for (i = 0; i < n_properties; i++) {
+	const char *atom_name;
+
+	atom_name = XGetAtomName(disp, props[i].name);
+	printf("properties[%d]: %s\n", i, atom_name);
+	if (IsStringProperty(atom_name)) {
+	    printf("\t = \"%s\"\n", XGetAtomName(disp, props[i].card32));
+	} else {
+	    printf("\t = %lu\n", props[i].card32);
+	}
+    }
+}
+
+
 void InspectFontStruct(XFontStruct *font)
 {
 #define SHOW(fmt, member) printf(#member " = " fmt "\n", font->member)
@@ -68,8 +122,14 @@ void InspectFontStruct(XFontStruct *font)
 
     SHOW("%d", all_chars_exist);
     SHOW("%u", default_char);
-    SHOW("%d", n_properties);
-    SHOW("%p", properties);
+
+    // フォントプロパティ
+    {
+	SHOW("%d", n_properties);
+	InspectProperties(font,
+			  font->properties,
+			  font->n_properties);
+    }
     printf("min_bounds:\n");
     InspectCharStruct(font->min_bounds);
     printf("max_bounds:\n");
@@ -101,8 +161,6 @@ int main(int argc, char *argv[])
     
     const char *fontName = argv[1];
 
-    Display *disp;
-
     disp = XOpenDisplay(NULL); // open $DISPLAY
 
     XFontStruct *font = XLoadQueryFont(disp, fontName);
@@ -116,4 +174,6 @@ int main(int argc, char *argv[])
     InspectFontStruct(font);
 
     XCloseDisplay(disp);
+
+    return 0;
 }

@@ -15,26 +15,6 @@
 // #define FONT_HELVETICA_14 "-*-helvetica-medium-r-*-*-14-*-*-*-*-*-koi8-*"
 // #define FONT_HELVETICA_14 "-cronyx-helvetica-medium-r-*-*-14-*-*-*-*-*-iso8859-5"
 
-
-int NextToken(const char *str, size_t start, size_t *end)
-{
-    size_t index = start;
-
-    /* トークナイズするものがない */
-    if (str[index] == '\0')
-	return 0;
-
-    if (isspace(str[index])) {
-	index++;
-    } else {
-	index++;
-	while (str[index] && !isspace(str[index]))
-	    index++;
-    }
-    *end = index;
-    return 1;
-}
-
 int WordWidth(XFontStruct *font, const char *str, int len)
 {
     int i;
