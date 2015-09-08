@@ -477,6 +477,26 @@ void InitializeBackBuffer()
     back_buffer = XdbeAllocateBackBufferName(disp, win, XdbeUndefined);
 }
 
+void InitializeGCs()
+{
+    /* ウィンドウに関連付けられたグラフィックコンテキストを作る */
+    default_gc = XCreateGC(disp, win, 0, NULL);
+    XSetForeground(disp, default_gc,
+		   BlackPixel(disp, DefaultScreen(disp)));
+
+    XSetFont(disp, default_gc, default_font->fid);
+
+    control_gc = XCreateGC(disp, win, 0, NULL);
+    XSetFont(disp, control_gc, (default_font)->fid);
+    XSetForeground(disp, control_gc, Color.skyblue.pixel);
+
+    margin_gc = XCreateGC(disp, win, 0, NULL);
+    XSetForeground(disp, margin_gc, Color.gray80.pixel);
+
+    cursor_gc = XCreateGC(disp, win, 0, NULL);
+    XSetForeground(disp, cursor_gc, Color.green.pixel);
+}
+
 void Initialize()
 {
 
@@ -512,6 +532,8 @@ void Initialize()
 				0,						// border color
 				WhitePixel(disp, DefaultScreen(disp)));		// background color
     XMapWindow(disp, win);
+    Atom WM_DELETE_WINDOW = XInternAtom(disp, "WM_DELETE_WINDOW", False); 
+    XSetWMProtocols(disp, win, &WM_DELETE_WINDOW, 1);
 
     InitializeBackBuffer();
 
@@ -527,44 +549,34 @@ void Initialize()
     }
     XSetICFocus(ic);
 
-    /* ウィンドウに関連付けられたグラフィックコンテキストを作る */
-    default_gc = XCreateGC(disp, win, 0, NULL);
-    XSetForeground(disp, default_gc,
-		   BlackPixel(disp, DefaultScreen(disp)));
-
     // 暴露イベントとキー押下イベントを受け取る。
     XSelectInput(disp, win, ExposureMask | KeyPressMask);
 
-    default_font = XLoadQueryFont(disp, DEFAULT_FONT);
-    XSetFont(disp, default_gc, default_font->fid);
 
     InitializeColors();
 
-    control_gc = XCreateGC(disp, win, 0, NULL);
-    XSetFont(disp, control_gc, (default_font)->fid);
-    XSetForeground(disp, control_gc, Color.skyblue.pixel);
-
-    margin_gc = XCreateGC(disp, win, 0, NULL);
-    XSetForeground(disp, margin_gc, Color.gray80.pixel);
-
-    cursor_gc = XCreateGC(disp, win, 0, NULL);
-    XSetForeground(disp, cursor_gc, Color.green.pixel);
-
+    default_font = XLoadQueryFont(disp, DEFAULT_FONT);
     InitializeFonts(disp);
+
+    InitializeGCs();
 }
 
 void CleanUp()
 {
-    ShutdownFonts(disp);
-    XUnloadFont(disp, default_font->fid);
     XFreeGC(disp, cursor_gc);
     XFreeGC(disp, margin_gc);
     XFreeGC(disp, control_gc);
     XFreeGC(disp, default_gc);
+
+    ShutdownFonts(disp);
+    XUnloadFont(disp, default_font->fid);
+
     XDestroyWindow(disp, win);
+
     XCloseDisplay(disp);
-    assert(text != NULL);
+
     free(text);
+    free(character_positions);
 }
 
 void UsageExit()
@@ -722,21 +734,6 @@ void HandleKeyPress(XKeyEvent *ev)
 	}
 	break;
     default:
-#if 0
-	{
-	    char buf[10];
-	    int len;
-	    len = XLookupString(ev, buf, 10, NULL, NULL); // NUL終端される。
-
-	    XChar2b ch = {
-		.byte1 = 0,
-		.byte2 = buf[0]
-	    };
-	    printf("char = 0x%02x ('%c')\n", ch.byte2, ch.byte2);
-	    if (len > 0)
-		InsertCharacter(cursor_position, ch);
-	}
-#else
 	{
 	    char utf8[1024];
 	    int len;
@@ -763,7 +760,6 @@ void HandleKeyPress(XKeyEvent *ev)
 	    
 	    iconv_close(cd);
 	}
-#endif
     }
     printf("cursor = %lu\n", (unsigned long) cursor_position);
 
@@ -835,6 +831,7 @@ int main(int argc, char *argv[])
 	    if (XFilterEvent(&ev, None))
 		continue;
 
+	    printf("event type = %d\n", ev.type);
 	    switch (ev.type) {
 	    case Expose:
 		Recalculate();
@@ -844,11 +841,17 @@ int main(int argc, char *argv[])
 	    case KeyPress:
 		HandleKeyPress((XKeyEvent *) &ev);
 		break;
+	    case ClientMessage:
+		printf("WM_DELETE_WINDOW\n");
+		goto Exit;
 	    default:
 		;
 	    }
 	}
     }
 
+ Exit:
     CleanUp();
+
+    return 0;
 }
