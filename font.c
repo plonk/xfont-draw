@@ -6,7 +6,7 @@
 #include <inttypes.h>
 #include <assert.h>
 
-extern uint16_t UnicodeToJisx0208[65536];
+#include "jisx0208.h"
 
 // #define LATIN1_FONT	"-yoteichi-kay-medium-r-normal--16-13-75-75-c-70-iso8859-1"
 // #define LATIN1_FONT	"-adobe-times-medium-r-*-*-24-*-*-*-*-*-iso8859-1"
@@ -69,7 +69,7 @@ void ShutdownFonts()
     iconv_close(cd_to_eucjp);
 }
 
-bool IsLatin1(XChar2b ucs2)
+static bool IsLatin1(XChar2b ucs2)
 {
     char outbuf[1];
     char *pout = outbuf;
@@ -82,7 +82,7 @@ bool IsLatin1(XChar2b ucs2)
     return true;
 }
 
-bool IsJisx0208(XChar2b ucs2)
+static bool IsJisx0208(XChar2b ucs2)
 {
     char outbuf[3];
     char *pout = outbuf;
@@ -141,7 +141,7 @@ bool IsJisx0208(XChar2b ucs2)
     return true;
 }
 
-XChar2b ToLatin1(XChar2b ucs2)
+static XChar2b ToLatin1(XChar2b ucs2)
 {
     char outbuf[1];
     char *pout = outbuf;
@@ -157,7 +157,7 @@ XChar2b ToLatin1(XChar2b ucs2)
     return res;
 }
 
-XChar2b ToJisx0208(XChar2b ucs2)
+static XChar2b ToJisx0208(XChar2b ucs2)
 {
     size_t idx = ((size_t) ucs2.byte1 << 8) | ucs2.byte2;
     XChar2b jis;
@@ -170,7 +170,10 @@ XChar2b ToJisx0208(XChar2b ucs2)
 
 XFontStruct *SelectFont(XChar2b ucs2, XChar2b *ch_return)
 {
-    if (IsLatin1(ucs2)) {
+    if (ucs2.byte1 == 0 && iscntrl(ucs2.byte2)) {
+	*ch_return = ucs2;
+	return UniFont;
+    } else if (IsLatin1(ucs2)) {
 	*ch_return = ToLatin1(ucs2);
 	return Latin1Font;
     } else if (IsJisx0208(ucs2)) {

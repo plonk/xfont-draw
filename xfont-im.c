@@ -19,6 +19,7 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/Xdbe.h>
 #include <sys/time.h>
+#include <locale.h>
 
 #include "util.h"
 #include "font.h"
@@ -31,6 +32,8 @@
 
 // グローバル変数
 static Display		*disp;
+static XIM		 im;
+static XIC		 ic;
 static Window		 win;
 static XdbeBackBuffer	 back_buffer;
 static GC		 default_gc;
@@ -477,8 +480,28 @@ void InitializeBackBuffer()
 void Initialize()
 {
 
+    if ( setlocale(LC_ALL, "") == NULL ) {
+	fprintf(stderr, "cannot set locale.\n");
+	exit(1);
+    }
+
     disp = XOpenDisplay(NULL); // open $DISPLAY
 
+    if (!XSupportsLocale()) {
+	fprintf(stderr, "locale is not supported by X.\n");
+	exit(1);
+    }
+
+    if (XSetLocaleModifiers("") == NULL) {
+	fprintf(stderr, "cannot set locale modifiers.\n");
+    }
+
+    im  = XOpenIM(disp, NULL, NULL, NULL);
+
+    if (im == NULL) {
+	fprintf(stderr, "could not open IM.\n");
+	exit(1);
+    }
 
     // ウィンドウの初期化。
     win = XCreateSimpleWindow(disp,						// ディスプレイ
@@ -491,6 +514,18 @@ void Initialize()
     XMapWindow(disp, win);
 
     InitializeBackBuffer();
+
+    // インプットコンテキストの初期化。
+    ic = XCreateIC(im,
+		   XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+		   XNClientWindow, win,
+		   NULL);
+
+    if (ic == NULL) {
+	fprintf(stderr, "could not create IC.\n");
+	exit(1);
+    }
+    XSetICFocus(ic);
 
     /* ウィンドウに関連付けられたグラフィックコンテキストを作る */
     default_gc = XCreateGC(disp, win, 0, NULL);
@@ -687,6 +722,7 @@ void HandleKeyPress(XKeyEvent *ev)
 	}
 	break;
     default:
+#if 0
 	{
 	    char buf[10];
 	    int len;
@@ -700,6 +736,34 @@ void HandleKeyPress(XKeyEvent *ev)
 	    if (len > 0)
 		InsertCharacter(cursor_position, ch);
 	}
+#else
+	{
+	    char utf8[1024];
+	    int len;
+
+	    len = Xutf8LookupString(ic, ev, utf8, sizeof(utf8), NULL, NULL);
+	    printf("'%.*s'\n", len, utf8);
+
+	    char ucs2[1024];
+	    iconv_t cd = iconv_open("UCS-2BE", "UTF-8");
+	    char *inbuf = utf8, *outbuf = ucs2;
+	    size_t inbytesleft = len, outbytesleft = 1024;
+
+	    len = iconv(cd,
+			&inbuf, &inbytesleft,
+			&outbuf, &outbytesleft);
+	    assert( len % 2 == 0 );
+	    printf("len == %d\n", len);
+
+	    char *p;
+	    for (p = ucs2; p < outbuf; p += 2) {
+		XChar2b ch = *((XChar2b*) p);
+		InsertCharacter(cursor_position, ch);
+	    }
+	    
+	    iconv_close(cd);
+	}
+#endif
     }
     printf("cursor = %lu\n", (unsigned long) cursor_position);
 
@@ -768,6 +832,8 @@ int main(int argc, char *argv[])
 
 	while (XPending(disp)) {
 	    XNextEvent(disp, &ev);
+	    if (XFilterEvent(&ev, None))
+		continue;
 
 	    switch (ev.type) {
 	    case Expose:

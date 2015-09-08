@@ -1,7 +1,7 @@
 CFLAGS=-g -Wall
 CXXFLAGS=-g -fpermissive
 
-COMMANDS=xfont-draw xfont-info xfont-eng xfont-justify xfont-hyphen xfont-unicode-cpp xfont-pagination xfont-font-combining xfont-double-buffering
+COMMANDS=xfont-draw xfont-info xfont-eng xfont-justify xfont-hyphen xfont-unicode-cpp xfont-pagination xfont-font-combining xfont-double-buffering xfont-input xfont-im
 
 all: $(COMMANDS)
 
@@ -13,6 +13,12 @@ font.o: font.c
 
 jisx0208.o: jisx0208.c
 	gcc $(CFLAGS) -c $<
+
+xfont-im: xfont-im.c util.c jisx0208.o font.o
+	gcc $(CFLAGS) -o $@ $^ -lX11 -lXext
+
+xfont-input: xfont-input.c util.c jisx0208.o font.o
+	gcc $(CFLAGS) -o $@ $^ -lX11 -lXext
 
 xfont-double-buffering: xfont-double-buffering.c util.c jisx0208.o font.o
 	gcc $(CFLAGS) -o $@ $^ -lX11 -lXext

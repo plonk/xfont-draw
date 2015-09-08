@@ -9,6 +9,7 @@
 * xfont-unicode-cpp は GNU Unifont で UTF-8 のテキストファイルを表示する。
 * xfont-font-combining はいろんな文字集合のフォントを組み合わせる。
 * xfont-double-buffering はダブルバッファリングで再描画時のちらつきを抑える。
+* xfont-input はキーボードで文字を入力できる。
 
 ## プログラム内部のこと
 
@@ -66,5 +67,6 @@ Unicodeから JIS X 0208 や ISO-8859-1 に変換する必要がある。Unicode
 ## 参考にしているサイト
 
 * [Double Buffer Extension Library](http://www.x.org/releases/X11R7.7/doc/libXext/dbelib.html)
+* [Chapter 11. Internationalized Text Input](http://menehune.opt.wfu.edu/Kokua/Irix_6.5.21_doc_cd/usr/share/Insight/library/SGI_bookshelves/SGI_Developer/books/XLib_PG/sgi_html/ch11.html)
 
 ## 

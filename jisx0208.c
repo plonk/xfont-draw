@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include "jisx0208.h"
 
 uint16_t UnicodeToJisx0208[] = {
     0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 
