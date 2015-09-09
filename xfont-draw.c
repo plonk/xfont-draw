@@ -49,8 +49,7 @@ int main()
 			      0,					// border color
 			      WhitePixel(disp, DefaultScreen(disp)));	// background color
 
-    int err;
-    err = XMapWindow(disp, win);
+    XMapWindow(disp, win);
 
     GC gc = XCreateGC(disp, win, 0, NULL);
 
@@ -70,18 +69,8 @@ int main()
     XFontStruct *font = XLoadQueryFont(disp, "k14");
 
     XEvent ev;
-    // const char *msg = "#k#1#4%U%)%s%H$K$h$j4A;z$+$J:.$8$jJ8$rI=<($9$k!J!-!&&X!&!.!K";
     const char *msg = "#L#o#r#e#m!!#i#p#s#u#m!!#d#o#l#o#r!!#s#i#t!!#a#m#e#t!$!!#c#o#n#s#e#c#t#e#t#u#r";
-    // const char *msg = "$\"$$$&$($*!!#p#r#i#n#t#e#d!!#i#n!!#t#h#e!!#k#1#4!!#f#o#n#t!%";
-    // const char *msg = "#i#i#i";
-    XTextItem16 text_item = { 
-	.chars	= (XChar2b *) msg,
-	.nchars = strlen(msg) / 2,
-	.delta	= 0,
-	.font	= font->fid
-    };
 
-    int y = 5;
     while (1) { // イベントループ
 	XNextEvent(disp, &ev);
 

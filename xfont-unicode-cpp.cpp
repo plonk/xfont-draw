@@ -143,7 +143,7 @@ void LoadFile(const char *filepath)
 	perror(filepath);
 	exit(1);
     }
-    char *utf8 = alloca(st.st_size + 1);
+    char *utf8 = static_cast<char *>( alloca(st.st_size + 1) );
     if ( fread(utf8, 1, st.st_size, fp) != st.st_size) {
 	fprintf(stderr, "warning: size mismatch\n");
     }
@@ -155,7 +155,7 @@ void LoadFile(const char *filepath)
     // UTF-8 を UCS2 に変換した場合、最大で二倍のバイト数を必要とする。
     // NUL 終端はしない。
     size_t outbytesleft = st.st_size * 2;
-    text = malloc(outbytesleft);
+    text = static_cast<XChar2b*>( malloc(outbytesleft) );
     char *outptr = (char *) text;
 
     if ( iconv(cd, &utf8, &inbytesleft, &outptr, &outbytesleft) == -1) {
@@ -173,7 +173,8 @@ void HandleKeyPress(const XKeyEvent *ev)
     bool needs_redraw = false;
     KeySym sym;
 
-    sym = XLookupKeysym(ev, 0);
+    sym = XLookupKeysym(const_cast<XKeyEvent *>( ev ),
+			0);
 
     switch (sym) {
     case XK_Right:
@@ -208,7 +209,7 @@ void HandleKeyPress(const XKeyEvent *ev)
     default:
 	;
     }
-    printf("cursor = %d\n", cursor_position);
+    printf("cursor = %lu\n", cursor_position);
 
     if (needs_redraw) {
 	XExposeEvent expose_event;

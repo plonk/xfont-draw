@@ -127,8 +127,6 @@ int main()
 	"Excepteur sint occaecat cupidatat non proident, sunt "
 	"in culpa qui officia deserunt mollit anim id est laborum.";
 
-    const char *harry = "Mr and Mrs Dursley, of number four, Privet Driver, were proud to say that they were perfectly normal, thank you very much. They were the last people you'd expect to be involved in anything strange or mysterious, because they just didn't hold with such nonsense.";
-
     while (1) { // イベントループ
 	XNextEvent(disp, &ev);
 

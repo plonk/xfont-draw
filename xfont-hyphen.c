@@ -34,6 +34,8 @@ static Window win;
 static GC gc;
 static XFontStruct *font;
 
+int IsSpace(const char *buff, Token token);
+
 void UpdateTokenWidth(const char *buff, Token *tok, int line_final)
 {
     int i;
@@ -218,7 +220,7 @@ int GetNextToken(const char *str, size_t start, size_t *end, int *can_hyphenate)
 void InspectToken(const char *buff, Token tok)
 {
     printf("#<Token '%.*s' "
-	   "width=%d start=%d length=%d can_hyphenate=%d>\n",
+	   "width=%d start=%lu length=%lu can_hyphenate=%d>\n",
 	   (int) tok.length, &buff[tok.start],
 	   tok.width, tok.start, tok.length, tok.can_hyphenate);
 }
@@ -342,7 +344,7 @@ void Redraw(const char *buff)
 	    ntok = 0; // トークン配列のクリア
 	    goto redoToken;
 	} else {	
-	    printf("AddToken '%.*s...'\n", tok.length, &buff[start]);
+	    printf("AddToken '%.*s...'\n", (int) tok.length, &buff[start]);
 	    // トークンを追加する。
 	    tokens[ntok] = tok;
 	    x += tok.width;

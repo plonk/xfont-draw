@@ -1,5 +1,5 @@
 CFLAGS=-g -Wall
-CXXFLAGS=-g -fpermissive
+CXXFLAGS=-g
 
 COMMANDS=xfont-draw xfont-info xfont-eng xfont-justify xfont-hyphen xfont-unicode-cpp xfont-pagination xfont-font-combining xfont-double-buffering xfont-input xfont-im
 
