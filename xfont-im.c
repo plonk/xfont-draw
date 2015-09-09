@@ -762,7 +762,7 @@ void HandleKeyPress(XKeyEvent *ev)
 	    iconv_close(cd);
 	}
     }
-    printf("cursor = %zu\n", (unsigned long) cursor_position);
+    printf("cursor = %zu\n", cursor_position);
 
     if (needs_redraw) {
 	InvalidateWindow();
