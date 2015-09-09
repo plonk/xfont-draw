@@ -19,6 +19,7 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/Xdbe.h>
 #include <sys/time.h>
+#include <alloca.h>
 
 #include "util.h"
 #include "font.h"

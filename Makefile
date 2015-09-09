@@ -1,4 +1,4 @@
-CFLAGS=-g -Wall -std=c99
+CFLAGS=-g -Wall -std=c99 -D_POSIX_SOURCE
 CXXFLAGS=-g -Wall
 
 COMMANDS=xfont-draw xfont-info xfont-eng xfont-justify xfont-hyphen xfont-unicode-cpp xfont-pagination xfont-font-combining xfont-double-buffering xfont-input xfont-im

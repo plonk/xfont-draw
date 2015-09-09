@@ -144,7 +144,7 @@ void LoadFile(const char *filepath)
 	exit(1);
     }
     char *utf8 = static_cast<char *>( alloca(st.st_size + 1) );
-    if ( fread(utf8, 1, st.st_size, fp) != st.st_size) {
+    if ( fread(utf8, 1, st.st_size, fp) != static_cast<size_t>( st.st_size )) {
 	fprintf(stderr, "warning: size mismatch\n");
     }
     fclose(fp);
@@ -158,7 +158,7 @@ void LoadFile(const char *filepath)
     text = static_cast<XChar2b*>( malloc(outbytesleft) );
     char *outptr = (char *) text;
 
-    if ( iconv(cd, &utf8, &inbytesleft, &outptr, &outbytesleft) == -1) {
+    if ( iconv(cd, &utf8, &inbytesleft, &outptr, &outbytesleft) == static_cast<size_t>( -1 )) {
 	perror(PROGRAM_NAME);
 	exit(1);
     }

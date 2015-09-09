@@ -6,7 +6,7 @@
 // m を n 個の整数l a[0] ~ a[n-1] に分割する。
 void Distribute(int m, size_t n, int a[])
 {
-    int i;
+    size_t i;
 
     if (m < 0) {
 	// 負数は扱いたくない。

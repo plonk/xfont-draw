@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <alloca.h>
 
 #define FONT_HELVETICA_14 "-adobe-helvetica-medium-r-*-*-14-*-*-*-*-*-iso8859-1"
 // #define FONT_HELVETICA_14 "-adobe-times-medium-r-*-*-14-*-*-*-*-*-iso8859-1"

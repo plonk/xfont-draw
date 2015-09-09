@@ -15,6 +15,7 @@
 // time関数の為に time.h をインクルードする。
 #include <time.h>
 #include <X11/Xlib.h>
+#include <alloca.h>
 
 #include "util.h"
 #include "font.h"
