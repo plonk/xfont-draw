@@ -16,7 +16,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-
 #define FONT_HELVETICA_14 "-adobe-helvetica-medium-r-*-*-14-*-*-*-*-*-iso8859-1"
 // #define FONT_HELVETICA_14 "-adobe-times-medium-r-*-*-14-*-*-*-*-*-iso8859-1"
 #define CHAR_HYPHEN '-'
@@ -220,7 +219,7 @@ int GetNextToken(const char *str, size_t start, size_t *end, int *can_hyphenate)
 void InspectToken(const char *buff, Token tok)
 {
     printf("#<Token '%.*s' "
-	   "width=%d start=%lu length=%lu can_hyphenate=%d>\n",
+	   "width=%d start=%zu length=%zu can_hyphenate=%d>\n",
 	   (int) tok.length, &buff[tok.start],
 	   tok.width, tok.start, tok.length, tok.can_hyphenate);
 }

@@ -87,12 +87,12 @@ void Paginate()
     Page *current_page = pages;
     size_t previous_end = 0;
 
-    printf("text_length = %lu\n", text_length);
+    printf("text_length = %zu\n", text_length);
     do {
 	if (current_page - pages == MAX_PAGES) { fprintf(stderr, "too many pages"); abort(); }
 
         previous_end = FillPage(previous_end, current_page, false);
-	printf("page: start=%lu, end=%lu\n", current_page->start, current_page->end);
+	printf("page: start=%zu, end=%zu\n", current_page->start, current_page->end);
 	current_page++;
     } while (previous_end < text_length);
 
@@ -479,7 +479,7 @@ void HandleKeyPress(XKeyEvent *ev)
     default:
 	;
     }
-    printf("cursor = %lu\n", (unsigned long) cursor_position);
+    printf("cursor = %zu\n", cursor_position);
 
     if (needs_redraw) {
 	XExposeEvent expose_event;
