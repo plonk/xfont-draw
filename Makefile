@@ -1,7 +1,7 @@
 CFLAGS=-g -Wall -std=c99 -D_POSIX_SOURCE
 CXXFLAGS=-std=c++11 -g -Wall
 
-COMMANDS=xfont-draw xfont-info xfont-eng xfont-justify xfont-hyphen xfont-unicode-cpp xfont-pagination xfont-font-combining xfont-double-buffering xfont-input xfont-im xfont-xft
+COMMANDS=xfont-draw xfont-info xfont-eng xfont-justify xfont-hyphen xfont-unicode-cpp xfont-pagination xfont-font-combining xfont-double-buffering xfont-input xfont-im xfont-xft xfont-draw-xft
 
 all: $(COMMANDS)
 
@@ -46,6 +46,9 @@ xfont-draw: xfont-draw.c
 
 xfont-xft: xfont-xft.cc
 	g++ $(CXXFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11
+
+xfont-draw-xft: xfont-draw-xft.c
+	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11
 
 xfont-info: xfont-info.c
 	gcc $(CFLAGS) -o $@ $^ -lX11
