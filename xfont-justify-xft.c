@@ -8,22 +8,237 @@
 #include <X11/Xlib.h>
 #include "util.h"
 #include <X11/Xft/Xft.h>
+#include <gc.h>
+#include <stdbool.h>
+#include <alloca.h>
 
 #include <ctype.h>
 #include <assert.h>
 
 #define FONT_DESCRIPTION "Source Han Sans JP-20:matrix=1 0 0 1"
 
+Display *disp;
+Window win;
+XftFont *font;
+XftColor black;
+
+typedef struct {
+  short x;
+  short width;
+  char *utf8;
+} Character;
+
+typedef struct {
+  short x;
+  short width;
+  Character *chars;
+  size_t nchars;
+} Token;
+
+typedef struct  {
+  Token *tokens;
+  size_t ntokens;
+} VisualLine;
+
+typedef struct {
+    short width, height;
+    short margin_top, margin_right, margin_bottom, margin_left;
+} PageInfo;
+
+#define MAX_LINES 1024
+
+int WordWidth(XftFont *font, const char *str, int len);
+
+static inline size_t Utf8CharBytes(const char *utf8) {
+    unsigned char b = *utf8;
+
+    if ((b & 0xc0) == 0x00 ||
+	(b & 0xc0) == 0x40) {
+	return 1;
+    } else if ((b & 0xc0) == 0xc0) {
+	if (b >> 1 == 126) {
+	    return 6;
+	} else if (b >> 2 == 62) {
+	    return 5;
+	} else if (b >> 3 == 30) {
+	    return 4;
+	} else if (b >> 4 == 14) {
+	    return 3;
+	} else if (b >> 5 == 6) {
+	    return 2;
+	}
+    }
+    abort();
+}
+
+const char *Utf8AdvanceChar(const char *utf8)
+{
+    if (*utf8 == '\0') {
+	fprintf(stderr, "Utf8AdvanceChar: no char\n");
+	abort();
+    }
+    return utf8 + Utf8CharBytes(utf8);
+}
+
+bool TokenIsSpace(Token *tok)
+{
+    return isspace(tok->chars[0].utf8[0]);
+}
+
+void CharacterCreateInPlace(Character *ch, short x, const char *utf8, size_t bytes)
+{
+    ch->utf8 = GC_STRNDUP(utf8, bytes);
+    ch->x = x;
+
+    XGlyphInfo extents;
+    XftTextExtentsUtf8(disp, font, (FcChar8 *) ch->utf8, bytes, &extents);
+    
+    ch->width = extents.xOff;
+}
+
+void TokenCreateInPlace(Token *tok, short *x_in_out, const char *utf8, size_t bytes)
+{
+    short x = *x_in_out;
+    tok->x = x;
+    tok->chars = NULL;
+    tok->nchars = 0;
+    for (const char *p = utf8; p - utf8 < bytes; p = Utf8AdvanceChar(p)) {
+	tok->nchars++;
+	tok->chars = GC_REALLOC(tok->chars, tok->nchars * sizeof(Character));
+	CharacterCreateInPlace(tok->chars + tok->nchars - 1,
+			       x - tok->x,
+			       p,
+			       Utf8CharBytes(p));
+	x += tok->chars[tok->nchars - 1].width;
+    }
+    tok->width = x - *x_in_out;
+    *x_in_out = x;
+}
+
+void InspectLine(VisualLine *line)
+{
+    printf("LINE[");
+    for (size_t i = 0; i < line->ntokens; i++) {
+	printf("%d, ", (int) line->tokens[i].width);
+    }
+    printf("]\n");
+}
+
+// ragged right でフォーマットされた行を両端揃えにする。
+void JustifyLine(VisualLine *line, const PageInfo *page)
+{
+    Token *trailing_space_start;
+    size_t index;
+    
+    for (index = line->ntokens - 1; index >= 0; index--) {
+	if (!TokenIsSpace(&line->tokens[index])) {
+	    index++;
+	    break;
+	}
+    }
+    assert(index != -1);
+    trailing_space_start = &line->tokens[index];
+    // trailing_space_start が仮想の行末となる。残りの空白は右マージンに被せる。
+
+    // この行に空白しか無い場合は何もしない。
+    if (trailing_space_start == line->tokens) {
+	return;
+    }
+
+    int nspaces = 0;
+    for (Token *tok = line->tokens; tok < trailing_space_start; tok++)
+	if (TokenIsSpace(tok))
+	    nspaces++;
+
+    // 何もできない。
+    if (nspaces == 0)
+	return;
+
+    // 最後の空白でないトークン。
+    Token *last_token = trailing_space_start - 1;
+    short right_edge = last_token->x + last_token->width;
+    assert(page->margin_right >= right_edge);
+
+
+    int *addends = alloca(nspaces * sizeof(int));
+    short shortage = page->margin_right - right_edge;
+    Distribute(shortage, nspaces, addends);
+
+    // ぶらさがっていない空白に幅を分配する。
+    int i = 0;
+    int SPACE_STRETCH_LIMIT = WordWidth(font, " ", 1) * 4;
+    for (Token *tok = line->tokens; tok != trailing_space_start; tok++) {
+	if (TokenIsSpace(tok)) {
+	    tok->width += (addends[i] > SPACE_STRETCH_LIMIT) ? SPACE_STRETCH_LIMIT : addends[i];
+	    i++;
+	}
+    }
+
+    // 更新された幅を元に x 座標を再計算する。
+    short x = page->margin_left;
+    for (Token *tok = line->tokens; tok < line->tokens + line->ntokens; tok++) {
+	tok->x = x;
+	x += tok->width;
+    }
+}
+
+VisualLine *CreateDocument(const char *text, const PageInfo *page, size_t *lines_return)
+{
+    VisualLine *lines = GC_MALLOC(MAX_LINES * sizeof(VisualLine));
+    size_t nlines = 0;
+
+    size_t start = 0;
+    size_t next;
+    bool more_tokens;
+
+    do {
+	nlines++;
+	if (nlines == MAX_LINES) {
+	    fprintf(stderr, "too many lines\n");
+	    exit(1);
+	}
+
+	short x = page->margin_left;
+	Token *tokens = NULL;
+	size_t ntokens = 0;
+	while ((more_tokens = NextToken(text, start, &next)) == true) {
+	    ntokens++;
+	    tokens = GC_REALLOC(tokens, ntokens * sizeof(Token));
+	    size_t len = next - start;
+	    TokenCreateInPlace(&tokens[ntokens-1],
+			       &x,
+			       &text[start],
+			       len);
+	    if (x > page->margin_right && ntokens > 1 && !TokenIsSpace(&tokens[ntokens-1])) {
+		// このトークンの追加をキャンセルする。
+		ntokens--;
+		tokens = GC_REALLOC(tokens, ntokens * sizeof(Token));
+		break;
+	    }
+	    start = next;
+	}
+
+	// 行の完成。
+	lines[nlines-1].tokens = tokens;
+	lines[nlines-1].ntokens = ntokens;
+
+	if (more_tokens)
+	    JustifyLine(&lines[nlines-1], page);
+    } while (more_tokens);
+
+    *lines_return = nlines;
+    return lines;
+}
+
 int LeadingAboveLine(XftFont *font);
 
+// 行の上に置くべき行間を算出する。
 int LeadingAboveLine(XftFont *font)
 {
     int lineSpacing = font->height - (font->ascent + font->descent);
 
     return lineSpacing / 2;
 }
-
-Display *disp;
 
 void GetGlyphInfo(char ch, XftFont *font, XGlyphInfo *extents_return)
 {
@@ -33,6 +248,7 @@ void GetGlyphInfo(char ch, XftFont *font, XGlyphInfo *extents_return)
     XftTextExtentsUtf8(disp, font, (FcChar8 *) str, 1, extents_return);
 }
 
+// str から始まる len 文字の幅を算出する。
 int WordWidth(XftFont *font, const char *str, int len)
 {
     int i;
@@ -53,45 +269,63 @@ struct Token {
     size_t length;
 };
 
-void DrawLine(XftDraw *draw, XftColor *color, XftFont *font, int LEFT_MARGIN, int y, const char *msg, struct Token tokens[], int ntokens) {
-    // 行の描画
-    puts("DrawLine");
-    int l;
-    int x = LEFT_MARGIN;
-    for (l = 0; l < ntokens; l++) {
-	if (isspace(msg[tokens[l].start])) {
-	    x += tokens[l].width;
-	} else {
-	    XftDrawStringUtf8(draw, color, font,
-			      x,	// X座標
-			      y,	// Y座標。ベースライン
-			      msg + tokens[l].start,
-			      tokens[l].length);
-	    x += tokens[l].width;
-	}
-    }
-}
-
-void Redraw(Display *disp, Window win, XftFont *font,
-	    const char *msg)
+void GetPageInfo(PageInfo *page)
 {
-    // 「黒」を割り当てる。毎回解放しなくてもリークはしないはず。
-    XftColor black;
-    XftColorAllocName(disp,
-		      DefaultVisual(disp,DefaultScreen(disp)),
-		      DefaultColormap(disp,DefaultScreen(disp)),
-		      "black", &black);
-
     // ウィンドウのサイズを取得する。
     XWindowAttributes attrs;
     XGetWindowAttributes(disp, win, &attrs);
 
-    const int LEFT_MARGIN = 50;
-    const int LINE_HEIGHT = font->height;
-    const int RIGHT_MARGIN = attrs.width - LEFT_MARGIN;
-    const int TOP_MARGIN = 50;
+    page->width = attrs.width;
+    page->height = attrs.height;
 
-    if (RIGHT_MARGIN < 10) {
+    page->margin_top = 50;
+    page->margin_right = attrs.width - 50;
+    page->margin_bottom = attrs.height - 50;
+    page->margin_left = 50;
+}
+
+void DrawLine(XftDraw *draw, VisualLine *line, short y)
+{
+    // 行の描画
+    for (int i = 0; i < line->ntokens; i++) {
+	Token *tok = &line->tokens[i];
+
+	if (TokenIsSpace(tok))
+	    continue;
+
+	for (int j = 0; j < tok->nchars; j++) {
+	    Character *ch = &tok->chars[j];
+
+	    XftDrawStringUtf8(draw, &black, font,
+			      tok->x + ch->x, y,
+			      (FcChar8 *) ch->utf8,
+			      strlen(ch->utf8));
+	}
+    }
+}
+
+size_t DrawDocument(XftDraw *draw, VisualLine *lines, size_t nlines, PageInfo *page)
+{
+    size_t start = 0;
+    short y = page->margin_top + LeadingAboveLine(font) + font->ascent;
+
+    for (size_t i = start; i < nlines; i++) {
+	DrawLine(draw, &lines[i], y);
+	y += font->height;
+
+	short next_line_ink_bottom = y + LeadingAboveLine(font) + font->ascent + font->descent;
+	if (next_line_ink_bottom > page->margin_bottom)
+	    return i;
+    }
+    return nlines;
+}
+
+void Redraw(const char *text)
+{
+    PageInfo page;
+    GetPageInfo(&page);
+
+    if (page.width < page.margin_left * 2) {
 	fprintf(stderr, "Viewport size too small.\n");
 	return;
     }
@@ -99,109 +333,29 @@ void Redraw(Display *disp, Window win, XftFont *font,
     XftDraw *draw = XftDrawCreate(disp, win, DefaultVisual(disp,DefaultScreen(disp)), DefaultColormap(disp,DefaultScreen(disp)));
 
     XClearWindow(disp, win);
-    size_t start = 0, next;
-    int x = LEFT_MARGIN; // left margin
-    int y = TOP_MARGIN + LeadingAboveLine(font) + font->ascent;
 
-    int SPACE_STRETCH_LIMIT;
-    {
-	XGlyphInfo extents;
-	GetGlyphInfo(' ', font, &extents);
-	SPACE_STRETCH_LIMIT = extents.xOff * 2;
-    }
+    size_t nlines;
+    VisualLine *lines = CreateDocument(text, &page, &nlines);
 
-#define MAX_TOKENS_PER_LINE 1024
-    struct Token tokens[MAX_TOKENS_PER_LINE];
-    int ntok = 0;
-    /**
-     * トークンを切り出して、RIGHT_MARGIN が埋まる直前まで tokens にトークンの情報を入れる。
-     * 次に空白を表わすトークンが不足分(RIGHT_MARGIN - x)を補うように引き伸ばす。
-     * 行を表示して y を増やす。tokens をクリアする。
-     * 入らなかったトークンが空白だった場合は省略、それ以外の場合は tokens[0] とする。
-     */
-    while (NextToken(msg, start, &next)) {
-	size_t len = next - start;
-	int width = WordWidth(font, msg + start, len);
-
-    redoToken:
-	// 行頭の空白トークンを無視する
-	if (isspace(msg[start]) && x == LEFT_MARGIN)
-		goto nextIter;
-
-	if (x + width > RIGHT_MARGIN && // 入らない
-	    x != LEFT_MARGIN) { // 行の最初のトークンの場合は見切れてもよい
-	    // 行の完成
-
-	    assert(ntok > 0);
-
-	    // 行末の空白を削除する
-	    if (isspace(msg[tokens[ntok - 1].start])) {
-		x -= tokens[ntok - 1].width;
-		ntok--;
-	    }
-
-	    // 行の空白の数を数える。
-	    int nspaces = 0;
-	    int m;
-	    for (m = 0; m < ntok; m++) {
-		if (isspace(msg[tokens[m].start]))
-		    nspaces++;
-	    }
-
-	    // 空白の調整
-	    if (nspaces > 0) {
-		printf("%d spaces\n", nspaces);
-		const int shortage = RIGHT_MARGIN - x;
-		int plus_alphas[MAX_TOKENS_PER_LINE];
-		int j, k;
-
-		Distribute(shortage, nspaces, plus_alphas);
-		for (j = 0; j < nspaces; j++) {
-		    if (plus_alphas[j] > SPACE_STRETCH_LIMIT)
-			plus_alphas[j] = SPACE_STRETCH_LIMIT;
-		}
-		
-		k = 0;
-		for (j = 0; j < ntok; j++) {
-		    if (isspace(msg[tokens[j].start])) {
-			printf("adding %d to tokens[%d].width\n", plus_alphas[k], j);
-			tokens[j].width += plus_alphas[k++];
-		    }
-		}
-		assert(k == nspaces);
-	    }
-
-	    DrawLine(draw, &black, font, LEFT_MARGIN, y, msg, tokens, ntok);
-
-	    y += LINE_HEIGHT;
-	    x = LEFT_MARGIN;
-	    ntok = 0; // トークン配列のクリア
-	    goto redoToken;
-	} else {	
-	    printf("AddToken '%c...'\n", msg[start]);
-	    // トークンを追加する。
-	    tokens[ntok].width = width;
-	    tokens[ntok].start = start;
-	    tokens[ntok].length = len;
-	    x += width;
-	    ntok++;
-	}
-    nextIter:
-	start = next;
-    }
-    DrawLine(draw, &black, font, LEFT_MARGIN, y, msg, tokens, ntok);
+    DrawDocument(draw, lines, nlines, &page);
 }
 
-void Initialize(Window *win_return, XftFont **font_return)
+void Initialize()
 {
 
     disp = XOpenDisplay(NULL); // open $DISPLAY
-    *win_return = XCreateSimpleWindow(disp, DefaultRootWindow(disp), 0, 0, 640, 480, 0, 0, WhitePixel(disp, DefaultScreen(disp)));	
-    XMapWindow(disp, *win_return);
+    win = XCreateSimpleWindow(disp, DefaultRootWindow(disp), 0, 0, 640, 480, 0, 0, WhitePixel(disp, DefaultScreen(disp)));	
+    XMapWindow(disp, win);
     // 暴露イベントを受け取る。
-    XSelectInput(disp, *win_return, ExposureMask);
+    XSelectInput(disp, win, ExposureMask);
 
-    *font_return = XftFontOpenName(disp, DefaultScreen(disp), FONT_DESCRIPTION);
+    font = XftFontOpenName(disp, DefaultScreen(disp), FONT_DESCRIPTION);
+
+    // 「黒」を割り当てる。
+    XftColorAllocName(disp,
+		      DefaultVisual(disp,DefaultScreen(disp)),
+		      DefaultColormap(disp,DefaultScreen(disp)),
+		      "black", &black);
 }
 
 void CleanUp(Display *disp, Window win, XftFont *font)
@@ -212,10 +366,8 @@ void CleanUp(Display *disp, Window win, XftFont *font)
 
 int main()
 {
-    Window win;
-    XftFont *font;
 
-    Initialize(&win,&font);
+    Initialize();
 
     XEvent ev;
 
@@ -235,7 +387,7 @@ int main()
 	if (ev.type != Expose)
 	    continue;
 
-	Redraw(disp, win, font, msg);
+	Redraw(msg);
     }
 
     CleanUp(disp, win, font);

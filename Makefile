@@ -17,28 +17,28 @@ font.o: font.c
 jisx0208.o: jisx0208.c
 	gcc $(CFLAGS) -c $<
 
-xfont-im: xfont-im.c util.c jisx0208.o font.o
+xfont-im: xfont-im.c util.o jisx0208.o font.o
 	gcc $(CFLAGS) -o $@ $^ -lX11 -lXext
 
-xfont-input: xfont-input.c util.c jisx0208.o font.o
+xfont-input: xfont-input.c util.o jisx0208.o font.o
 	gcc $(CFLAGS) -o $@ $^ -lX11 -lXext
 
-xfont-double-buffering: xfont-double-buffering.c util.c jisx0208.o font.o
+xfont-double-buffering: xfont-double-buffering.c util.o jisx0208.o font.o
 	gcc $(CFLAGS) -o $@ $^ -lX11 -lXext
 
-xfont-font-combining: xfont-font-combining.c util.c jisx0208.o font.o
+xfont-font-combining: xfont-font-combining.c util.o jisx0208.o font.o
 	gcc $(CFLAGS) -o $@ $^ -lX11
 
-xfont-pagination: xfont-pagination.c util.c
+xfont-pagination: xfont-pagination.c util.o
 	gcc $(CFLAGS) -o $@ $^ -lX11
 
 xfont-unicode-cpp: xfont-unicode-cpp.cpp util.c
 	g++ $(CXXFLAGS) -o $@ $^ -lX11
 
-xfont-hyphen: xfont-hyphen.c util.c
+xfont-hyphen: xfont-hyphen.c util.o
 	gcc $(CFLAGS) -o $@ $^ -lX11
 
-xfont-justify: xfont-justify.c util.c
+xfont-justify: xfont-justify.c util.o
 	gcc $(CFLAGS) -o $@ $^ -lX11
 
 xfont-eng: xfont-eng.c util.c
@@ -56,8 +56,11 @@ xfont-draw-xft: xfont-draw-xft.c
 xfont-eng-xft: xfont-eng-xft.c util.c
 	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11
 
-xfont-justify-xft: xfont-justify-xft.c util.c
-	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11
+xfont-justify-xft: xfont-justify-xft.c util.o
+	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11 -lgc
 
 xfont-info: xfont-info.c
 	gcc $(CFLAGS) -o $@ $^ -lX11
+
+util.o: util.c
+	gcc $(CFLAGS) -c $^
