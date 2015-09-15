@@ -3,7 +3,8 @@ CXXFLAGS=-std=c++11 -g -Wall
 
 COMMANDS=xfont-draw xfont-info xfont-eng xfont-justify xfont-hyphen \
 	xfont-unicode-cpp xfont-pagination xfont-font-combining \
-	xfont-double-buffering xfont-input xfont-im xfont-xft xfont-draw-xft xfont-eng-xft
+	xfont-double-buffering xfont-input xfont-im xfont-xft xfont-draw-xft \
+	xfont-eng-xft xfont-justify-xft
 
 all: $(COMMANDS)
 
@@ -53,6 +54,9 @@ xfont-draw-xft: xfont-draw-xft.c
 	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11
 
 xfont-eng-xft: xfont-eng-xft.c util.c
+	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11
+
+xfont-justify-xft: xfont-justify-xft.c util.c
 	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11
 
 xfont-info: xfont-info.c

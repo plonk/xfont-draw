@@ -4,6 +4,7 @@
 
 * xfont-draw は文章をツメ組みで表示する。JIS X 0208 で k14 で表示するから半角は表示できない。
 * xfont-info はコマンドラインで指定したフォントの情報(XFontStructに入って来る)をダンプする。
+* xfont-eng は欧文ワードラップをやる。
 * xfont-justify は両端揃えをやる。
 * xfont-hyphen はハイフネーションをやる。
 * xfont-unicode-cpp は GNU Unifont で UTF-8 のテキストファイルを表示する。
@@ -11,6 +12,8 @@
 * xfont-double-buffering はダブルバッファリングで再描画時のちらつきを抑える。
 * xfont-input はキーボードで文字を入力できる。
 * xfont-im は XIM で日本語を入力できる。
+* xfont-draw-xft は xfont-draw の Xft 版。
+* xfont-eng-xft は xfont-eng の Xft 版。
 
 ## プログラム内部のこと
 
