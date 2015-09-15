@@ -10,6 +10,7 @@
 * xfont-font-combining はいろんな文字集合のフォントを組み合わせる。
 * xfont-double-buffering はダブルバッファリングで再描画時のちらつきを抑える。
 * xfont-input はキーボードで文字を入力できる。
+* xfont-im は XIM で日本語を入力できる。
 
 ## プログラム内部のこと
 

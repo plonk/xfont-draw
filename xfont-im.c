@@ -321,13 +321,25 @@ void DrawPage(Page *page)
 	    pt = character_positions[cursor_position];
 	}
 	DrawCursor(back_buffer, pt.x, pt.y);
+
+	// 入力コンテキストにカーソル位置を伝える。
+	XRectangle area = {
+	    .x = 0,
+	    .y = 0,
+	    .width = 320,
+	    .height = 320
+	};
+	pt.y -= default_font->ascent;
+    
+	XVaNestedList preedit_attributes =
+	    XVaCreateNestedList(0, XNSpotLocation, &pt, XNArea, &area, NULL);
+	XSetICValues(ic, XNPreeditAttributes, preedit_attributes, NULL);
     }
 }
 
 // 全てを再計算する。
 void Recalculate()
 {
-    puts("recalc");
     GetWindowSize();
     Paginate();
     UpdateCursor();
@@ -478,6 +490,25 @@ void InitializeBackBuffer()
     back_buffer = XdbeAllocateBackBufferName(disp, win, XdbeUndefined);
 }
 
+void StatusStartCallback(XIC ic, XPointer client_data, XPointer call_data)
+{
+    assert(client_data == NULL && call_data == NULL);
+
+    fprintf(stderr, "status start\n");
+}
+
+void StatusDoneCallback(XIC ic, XPointer client_data, XPointer call_data)
+{
+    assert(client_data == NULL && call_data == NULL);
+
+    fprintf(stderr, "status done\n");
+}
+
+void StatusDrawCallback(XIC ic, XPointer client_data, XIMStatusDrawCallbackStruct *call_data)
+{
+    fprintf(stderr, "status done\n");
+}
+
 void InitializeGCs()
 {
     /* ウィンドウに関連付けられたグラフィックコンテキストを作る */
@@ -533,16 +564,45 @@ void Initialize()
 				0,						// border color
 				WhitePixel(disp, DefaultScreen(disp)));		// background color
     XMapWindow(disp, win);
+
     Atom WM_DELETE_WINDOW = XInternAtom(disp, "WM_DELETE_WINDOW", False); 
     XSetWMProtocols(disp, win, &WM_DELETE_WINDOW, 1);
 
     InitializeBackBuffer();
 
+    XRectangle area = {
+	.x = 0,
+	.y = 0,
+	.width = 320,
+	.height = 320
+    };
+    XPoint location = {
+	.x = 0,
+	.y = 0
+    };
+    
+    XFontSet fs;
+
+    char **missing_charsets;
+    int count;
+    char *def_str;
+    fs = XCreateFontSet(disp, "-misc-fixed-medium-r-normal--14-*-*-*-c-*-*-*", &missing_charsets, &count, &def_str);
+
+    XVaNestedList preedit_attributes =
+	XVaCreateNestedList(0,
+			    XNSpotLocation, &location,
+			    XNFontSet, fs,
+			    XNArea, &area,
+			    NULL);
+					    
     // インプットコンテキストの初期化。
     ic = XCreateIC(im,
-		   XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+		   XNInputStyle, XIMPreeditPosition | XIMStatusNothing,
+		   XNPreeditAttributes, preedit_attributes,
 		   XNClientWindow, win,
 		   NULL);
+    XFree(preedit_attributes);
+    //     XFree(status_attributes);
 
     if (ic == NULL) {
 	fprintf(stderr, "could not create IC.\n");
@@ -836,7 +896,6 @@ int main(int argc, char *argv[])
 	    switch (ev.type) {
 	    case Expose:
 		Recalculate();
-		puts ("redraw");
 		Redraw();
 		break;
 	    case KeyPress:
