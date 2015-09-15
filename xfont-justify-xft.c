@@ -124,33 +124,38 @@ void InspectLine(VisualLine *line)
     printf("]\n");
 }
 
-// ragged right でフォーマットされた行を両端揃えにする。
-void JustifyLine(VisualLine *line, const PageInfo *page)
+
+// ぶらさがり空白トークンを除いた、行の終端位置を示す Token ポインタを返す。
+// ぶらさがり空白トークンが無い場合は、デリファレンスできないので注意する。
+Token *EffectiveLineEnd(VisualLine *line)
 {
-    Token *trailing_space_start;
     size_t index;
-    
+
     for (index = line->ntokens - 1; index >= 0; index--) {
 	if (!TokenIsSpace(&line->tokens[index])) {
-	    index++;
 	    break;
 	}
     }
-    assert(index != -1);
-    trailing_space_start = &line->tokens[index];
-    // trailing_space_start が仮想の行末となる。残りの空白は右マージンに被せる。
+    return &line->tokens[index + 1];
+}
+
+// ragged right でフォーマットされた行を両端揃えにする。
+void JustifyLine(VisualLine *line, const PageInfo *page)
+{
+    Token *trailing_space_start; // 仮想の行末。残りの空白は右マージンに被せる。
+
+    trailing_space_start = EffectiveLineEnd(line);
 
     // この行に空白しか無い場合は何もしない。
-    if (trailing_space_start == line->tokens) {
+    if (trailing_space_start == line->tokens)
 	return;
-    }
 
     int nspaces = 0;
     for (Token *tok = line->tokens; tok < trailing_space_start; tok++)
 	if (TokenIsSpace(tok))
 	    nspaces++;
 
-    // 何もできない。
+    // 空白トークンが無いので、その幅も調整できない。
     if (nspaces == 0)
 	return;
 
@@ -159,22 +164,24 @@ void JustifyLine(VisualLine *line, const PageInfo *page)
     short right_edge = last_token->x + last_token->width;
     assert(page->margin_right >= right_edge);
 
-
+    // それぞれの空白トークンについて、増やすべき幅を計算する。
     int *addends = alloca(nspaces * sizeof(int));
     short shortage = page->margin_right - right_edge;
     Distribute(shortage, nspaces, addends);
 
-    // ぶらさがっていない空白に幅を分配する。
+    // ぶらさがっていない空白トークンに幅を分配する。
     int i = 0;
     int SPACE_STRETCH_LIMIT = WordWidth(font, " ", 1) * 4;
     for (Token *tok = line->tokens; tok != trailing_space_start; tok++) {
 	if (TokenIsSpace(tok)) {
-	    tok->width += (addends[i] > SPACE_STRETCH_LIMIT) ? SPACE_STRETCH_LIMIT : addends[i];
+	    int addend = (addends[i] > SPACE_STRETCH_LIMIT) ? SPACE_STRETCH_LIMIT : addends[i];
+
+	    tok->width += addend;
 	    i++;
 	}
     }
 
-    // 更新された幅を元に x 座標を再計算する。
+    // 更新された幅を元にトークンの x 座標を再計算する。
     short x = page->margin_left;
     for (Token *tok = line->tokens; tok < line->tokens + line->ntokens; tok++) {
 	tok->x = x;
