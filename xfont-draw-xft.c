@@ -36,7 +36,6 @@ void GetGlyphInfo(char ch, XftFont *font, XGlyphInfo *extents_return)
 
 // 行間は推奨されるフォントの高さ(height)−(ascent+descent)に等しく、
 // 行の上部と下部に均等に配分される。
-
 int LeadingAboveLine(XftFont *font)
 {
     int lineSpacing = font->height - (font->ascent + font->descent);
@@ -68,7 +67,9 @@ int main()
 
     // Xftカラー
     XftColor color;
-    XftColorAllocName(disp, DefaultVisual(disp,DefaultScreen(disp)), DefaultColormap(disp,DefaultScreen(disp)),
+    XftColorAllocName(disp,
+		      DefaultVisual(disp,DefaultScreen(disp)),
+		      DefaultColormap(disp,DefaultScreen(disp)),
 		      "black", &color);
 
     // Xftフォント
