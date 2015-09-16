@@ -37,21 +37,21 @@ typedef struct {
 CursorPath cursor_path;
 
 typedef struct {
-  short x;
-  short width;
-  char *utf8;
+    short x;
+    short width;
+    char *utf8;
 } Character;
 
 typedef struct {
-  short x;
-  short width;
-  Character *chars;
-  size_t nchars;
+    short x;
+    short width;
+    Character *chars;
+    size_t nchars;
 } Token;
 
 typedef struct  {
-  Token *tokens;
-  size_t ntokens;
+    Token *tokens;
+    size_t ntokens;
 } VisualLine;
 
 typedef struct {
@@ -130,12 +130,9 @@ static inline size_t Utf8CharBytes(const char *utf8) {
     abort();
 }
 
+// NUL文字でも停止しない。
 const char *Utf8AdvanceChar(const char *utf8)
 {
-    if (*utf8 == '\0') {
-	fprintf(stderr, "Utf8AdvanceChar: no char\n");
-	abort();
-    }
     return utf8 + Utf8CharBytes(utf8);
 }
 
@@ -152,12 +149,25 @@ size_t Utf8CountChars(const char *utf8)
     return count;
 }
 
+size_t Utf8CountCharsBuffer(const char *utf8, size_t length)
+{
+    const char *p = utf8;
+    size_t count = 0;
+
+    while (p < utf8 + length) {
+	p = Utf8AdvanceChar(p);
+	count++;
+    }
+
+    return count;
+}
+
 bool TokenIsSpace(Token *tok)
 {
     return isspace(tok->chars[0].utf8[0]);
 }
 
-void CharacterCreateInPlace(Character *ch, short x, const char *utf8, size_t bytes)
+void CharacterInitialize(Character *ch, short x, const char *utf8, size_t bytes)
 {
     ch->utf8 = GC_STRNDUP(utf8, bytes);
     ch->x = x;
@@ -168,23 +178,23 @@ void CharacterCreateInPlace(Character *ch, short x, const char *utf8, size_t byt
     ch->width = extents.xOff;
 }
 
-void TokenCreateInPlace(Token *tok, short *x_in_out, const char *utf8, size_t bytes)
+short TokenInitialize(Token *tok, short x, const char *utf8, size_t bytes)
 {
-    short x = *x_in_out;
     tok->x = x;
-    tok->chars = NULL;
-    tok->nchars = 0;
-    for (const char *p = utf8; p - utf8 < bytes; p = Utf8AdvanceChar(p)) {
-	tok->nchars++;
-	tok->chars = GC_REALLOC(tok->chars, tok->nchars * sizeof(Character));
-	CharacterCreateInPlace(tok->chars + tok->nchars - 1,
-			       x - tok->x,
-			       p,
-			       Utf8CharBytes(p));
-	x += tok->chars[tok->nchars - 1].width;
+    tok->nchars = Utf8CountCharsBuffer(utf8, bytes);
+    tok->chars = GC_MALLOC(tok->nchars * sizeof(Character));
+    const char *p = utf8;
+    for (int i = 0; i < tok->nchars; i++) {
+	CharacterInitialize(&tok->chars[i],
+			    x - tok->x,
+			    p,
+			    Utf8CharBytes(p));
+	x += tok->chars[i].width;
+	p = Utf8AdvanceChar(p);
     }
-    tok->width = x - *x_in_out;
-    *x_in_out = x;
+    tok->width = x - tok->x;
+
+    return x;
 }
 
 void InspectLine(VisualLine *line)
@@ -284,10 +294,10 @@ VisualLine *CreateLines(const char *text, const PageInfo *page, size_t *lines_re
 	    ntokens++;
 	    tokens = GC_REALLOC(tokens, ntokens * sizeof(Token));
 	    size_t len = next - start;
-	    TokenCreateInPlace(&tokens[ntokens-1],
-			       &x,
-			       &text[start],
-			       len);
+	    x = TokenInitialize(&tokens[ntokens-1],
+				x,
+				&text[start],
+				len);
 	    if (x > page->margin_right && ntokens > 1 && !TokenIsSpace(&tokens[ntokens-1])) {
 		// このトークンの追加をキャンセルする。
 		ntokens--;
@@ -434,7 +444,7 @@ void DrawLeadingAboveLine(XftDraw *draw, PageInfo *page, short y)
 
 void DrawLeadingBelowLine(XftDraw *draw, PageInfo *page, short y)
 {
-   XftDrawRect(draw, ColorGetXftColor("cornflower blue"),
+    XftDrawRect(draw, ColorGetXftColor("cornflower blue"),
 		page->margin_left, y + font->descent,
 		page->margin_right - page->margin_left, LeadingBelowLine(font));
 }
@@ -564,11 +574,11 @@ void MarkMargins(PageInfo *page)
 
 void Redraw()
 {
-	    printf("%d\n", (int) cursor_offset);
-	    printf("%d.%d.%d\n",
-		   (int) cursor_path.line,
-		   (int) cursor_path.token,
-		   (int) cursor_path.character);
+    printf("%d\n", (int) cursor_offset);
+    printf("%d.%d.%d\n",
+	   (int) cursor_path.line,
+	   (int) cursor_path.token,
+	   (int) cursor_path.character);
 
     if (doc->page->width < doc->page->margin_left * 2) {
 	fprintf(stderr, "Viewport size too small.\n");
