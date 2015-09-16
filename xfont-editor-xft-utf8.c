@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <gc.h>
 
 #include "xfont-editor-xft-utf8.h"
@@ -90,6 +91,17 @@ char *ReadFile(const char *filepath)
     return buf;
 }
 
+static int IsAsciiPrintable(const char *p)
+{
+    return Utf8CharBytes(p) == 1 && *p >= 0x21 && *p <= 0x7e;
+}
+
+static int IsForbiddenAtStart(const char *utf8)
+{
+    return strncmp(utf8, "、", sizeof("、")-1) == 0||
+	strncmp(utf8, "。", sizeof("。")-1) == 0;
+}
+
 // str の  start 位置からトークン(単語あるいは空白)を切り出す。
 // トークンを構成する最後の文字の次の位置が *end に設定される。
 // トークンが読み出せた場合は 1、さもなくば 0 を返す。
@@ -104,13 +116,15 @@ int NextTokenBilingual(const char *utf8, size_t start, size_t *end)
     if (*p == ' ') {
 	do {
 	    p = Utf8AdvanceChar(p);
-	} while (*p && *p == ' ');
-    } else if (Utf8CharBytes(p) == 1 && *p >= 0x21 && *p <= 0x7e) {
+	} while (*p && (*p == ' ' || IsForbiddenAtStart(p)));
+    } else if (IsAsciiPrintable(p)) {
 	do  {
 	    p = Utf8AdvanceChar(p);
-	} while (*p && Utf8CharBytes(p) == 1 && *p >= 0x21 && *p <= 0x7e);
+	} while (*p && (IsAsciiPrintable(p) || IsForbiddenAtStart(p)));
     } else {
-	p = Utf8AdvanceChar(p);
+	do {
+	    p = Utf8AdvanceChar(p);
+	} while (*p && IsForbiddenAtStart(p));
     }
     *end = p - utf8;
     return 1;

@@ -20,6 +20,9 @@ font.o: font.c
 jisx0208.o: jisx0208.c
 	gcc $(CFLAGS) -c $<
 
+xfont-editor-xft-view.o: xfont-editor-xft-view.c
+	gcc $(CFLAGS) -I/usr/include/freetype2 -c $<
+
 xfont-editor-xft-utf8.o: xfont-editor-xft-utf8.c
 	gcc $(CFLAGS) -c $<
 
@@ -65,7 +68,7 @@ xfont-eng-xft: xfont-eng-xft.c util.c
 xfont-justify-xft: xfont-justify-xft.c util.o color.o
 	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11 -lXext -lgc
 
-xfont-editor-xft: xfont-editor-xft.c util.o color.o xfont-editor-xft-utf8.o
+xfont-editor-xft: xfont-editor-xft.c util.o color.o xfont-editor-xft-utf8.o xfont-editor-xft-view.o
 	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11 -lXext -lgc
 
 xfont-info: xfont-info.c
