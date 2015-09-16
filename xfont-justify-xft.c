@@ -28,12 +28,13 @@ XftFont *font;
 size_t cursor_offset;
 size_t top_line;
 
-CursorPath cursor_path;
 typedef struct {
     size_t line;
     size_t token;
     size_t character;
 } CursorPath;
+
+CursorPath cursor_path;
 
 typedef struct {
     short x;
