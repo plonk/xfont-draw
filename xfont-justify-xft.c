@@ -354,34 +354,14 @@ int LeadingBelowLine(XftFont *font)
     return lineSpacing / 2 + lineSpacing % 2;
 }
 
-void GetGlyphInfo(char ch, XftFont *font, XGlyphInfo *extents_return)
+// str から始まる bytes バイトの文字列の幅を算出する。
+int WordWidth(XftFont *font, const char *str, int bytes)
 {
-    char str[7] = ""; // 最長のUTF8文字が入る大きさを確保する。
+    XGlyphInfo extents;
 
-    str[0] = ch;
-    XftTextExtentsUtf8(disp, font, (FcChar8 *) str, 1, extents_return);
+    XftTextExtentsUtf8(disp, font, (FcChar8 *) str, bytes, &extents);
+    return extents.xOff;
 }
-
-// str から始まる len 文字の幅を算出する。
-int WordWidth(XftFont *font, const char *str, int len)
-{
-    int i;
-    int width = 0;
-
-    for (i = 0; i < len; i++) {
-	XGlyphInfo info;
-
-	GetGlyphInfo(str[i], font, &info);
-	width += info.xOff;
-    }
-    return width;
-}
-
-struct Token {
-    int width;
-    size_t start;
-    size_t length;
-};
 
 void GetPageInfo(PageInfo *page)
 {
@@ -425,10 +405,12 @@ CursorPath ToCursorPath(Document *doc, size_t offset)
 void DrawCursor(XftDraw *draw, short x, short y)
 {
 #if 0
+    // 文字の高さのカーソル。
     XftDrawRect(draw, ColorGetXftColor("magenta"),
 		x - 1, y - font->ascent,
 		2, font->ascent + font->descent);
 #else
+    // 行の高さのカーソル。
     XftDrawRect(draw, ColorGetXftColor("magenta"),
 		x - 1, y - font->ascent - LeadingAboveLine(font),
 		2, font->height);
@@ -437,88 +419,103 @@ void DrawCursor(XftDraw *draw, short x, short y)
 
 void DrawLeadingAboveLine(XftDraw *draw, PageInfo *page, short y)
 {
-    XftDrawRect(draw, ColorGetXftColor("navajo white"),
-		page->margin_left, y - font->ascent - LeadingAboveLine(font),
-		page->margin_right - page->margin_left, LeadingAboveLine(font));
+    // 上の行間を描画する。
+    if (DRAW_LEADING)
+	XftDrawRect(draw, ColorGetXftColor("navajo white"),
+		    page->margin_left, y - font->ascent - LeadingAboveLine(font),
+		    page->margin_right - page->margin_left, LeadingAboveLine(font));
 }
 
 void DrawLeadingBelowLine(XftDraw *draw, PageInfo *page, short y)
 {
-    XftDrawRect(draw, ColorGetXftColor("cornflower blue"),
-		page->margin_left, y + font->descent,
-		page->margin_right - page->margin_left, LeadingBelowLine(font));
+    // 下の行間を描画する。
+    if (DRAW_LEADING)
+	XftDrawRect(draw, ColorGetXftColor("cornflower blue"),
+		    page->margin_left, y + font->descent,
+		    page->margin_right - page->margin_left, LeadingBelowLine(font));
 }
 
 void DrawBaseline(XftDraw *draw, PageInfo *page, short y)
 {
-    XftDrawRect(draw, ColorGetXftColor("gray90"),
-		page->margin_left, y,
-		page->margin_right - page->margin_left, 1);
+    // ベースラインを描画する。
+    if (DRAW_BASELINE)
+	XftDrawRect(draw, ColorGetXftColor("gray90"),
+		    page->margin_left, y,
+		    page->margin_right - page->margin_left, 1);
+}
+
+#define NEWLINE_SYMBOL "↓"
+void DrawNewline(XftDraw *draw, short x, short y)
+{
+    if (DRAW_RETURN)
+	XftDrawStringUtf8(draw,
+			  ColorGetXftColor("cyan4"),
+			  font,
+			  x, y,
+			  (FcChar8 *) NEWLINE_SYMBOL, sizeof(NEWLINE_SYMBOL) - 1);
+}
+
+void DrawSpace(XftDraw *draw, short x, short y, short width)
+{
+    if (DRAW_SPACE)
+	XftDrawRect(draw, ColorGetXftColor("misty rose"),
+		    x, y - font->ascent,
+		    width, font->ascent + font->descent);
+}
+
+void DrawPrintableToken(XftDraw *draw, Token *tok, short y)
+{
+    for (int i = 0; i < tok->nchars; i++) {
+	XftDrawStringUtf8(draw,
+			  ColorGetXftColor("black"),
+			  font,
+			  tok->x + tok->chars[i].x, y,
+			  (FcChar8 *) tok->chars[i].utf8,
+			  strlen(tok->chars[i].utf8));
+    }
+}
+
+void DrawToken(XftDraw *draw, Token *tok, short y)
+{
+    if (TokenIsSpace(tok)) {
+	switch (tok->chars[0].utf8[0]) {
+	case ' ':
+	    DrawSpace(draw, tok->x, y, tok->width);
+	    break;
+	case '\n':
+	    DrawNewline(draw, tok->x, y);
+	    break;
+	}	
+    } else {
+	// 普通の文字からなるトークン
+	DrawPrintableToken(draw, tok, y);
+    }
+}
+
+// 行を描画する前に実行する。
+void DrawLineBefore(XftDraw *draw, PageInfo *page, short y)
+{
+    DrawLeadingAboveLine(draw, page, y);
+    DrawLeadingBelowLine(draw, page, y);
+    DrawBaseline(draw, page, y);
 }
 
 void DrawLine(XftDraw *draw, PageInfo *page, VisualLine *lines, size_t index, short y)
 {
     VisualLine *line = &lines[index];
 
-    // 上の行間を描画する。
-    if (DRAW_LEADING)
-	DrawLeadingAboveLine(draw, page, y);
-
-    // 下の行間を描画する。
-    if (DRAW_LEADING)
-	DrawLeadingBelowLine(draw, page, y);
-
-    // ベースラインを描画する。
-    if (DRAW_BASELINE)
-	DrawBaseline(draw, page, y);
+    DrawLineBefore(draw, page, y);
 
     // 行の描画
     for (int i = 0; i < line->ntokens; i++) {
 	Token *tok = &line->tokens[i];
 
-	if (TokenIsSpace(tok)) {
-	    switch (tok->chars[0].utf8[0]) {
-	    case ' ':
-		if (!DRAW_SPACE) break;
-		XftDrawRect(draw, ColorGetXftColor("misty rose"),
-			    tok->x, y - font->ascent,
-			    tok->width, font->ascent + font->descent);
-		break;
-	    case '\n':
-		if (!DRAW_RETURN) break;
-		XftDrawStringUtf8(draw,
-				  ColorGetXftColor("cyan4"),
-				  font,
-				  tok->x, y,
-				  (FcChar8 *) "↓",
-				  strlen("↓"));
-		break;
-	    default:
-		;
-	    }	
-	    for (int j = 0; j < tok->nchars; j++) {
-		Character *ch = &tok->chars[j];
-		CursorPath here = { .line = index, .token = i, .character = j };
+	DrawToken(draw, tok, y);
 
-		if (CursorPathEquals(cursor_path, here))
-		    DrawCursor(draw, tok->x + ch->x, y);
-	    }
-	} else {
-	    // 普通の文字からなるトークン
-	    for (int j = 0; j < tok->nchars; j++) {
-		Character *ch = &tok->chars[j];
-		CursorPath here = { .line = index, .token = i, .character = j };
-
-		XftDrawStringUtf8(draw,
-				  ColorGetXftColor("black"),
-				  font,
-				  tok->x + ch->x, y,
-				  (FcChar8 *) ch->utf8,
-				  strlen(ch->utf8));
-
-		if (CursorPathEquals(cursor_path, here))
-		    DrawCursor(draw, tok->x + ch->x, y);
-	    }
+	// カーソルを描画する。
+	for (int j = 0; j < tok->nchars; j++) {
+	    if (CursorPathEquals(cursor_path, (CursorPath) { index, i, j }))
+		DrawCursor(draw, tok->x + tok->chars[j].x, y);
 	}
     }
 }
