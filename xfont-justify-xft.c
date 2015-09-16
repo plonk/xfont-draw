@@ -28,18 +28,18 @@ XftFont *font;
 size_t cursor_offset;
 size_t top_line;
 
+CursorPath cursor_path;
 typedef struct {
     size_t line;
     size_t token;
     size_t character;
 } CursorPath;
 
-CursorPath cursor_path;
-
 typedef struct {
     short x;
     short width;
     char *utf8;
+    size_t length;
 } Character;
 
 typedef struct {
@@ -167,9 +167,15 @@ bool TokenIsSpace(Token *tok)
     return isspace(tok->chars[0].utf8[0]);
 }
 
+bool TokenIsNewline(Token *tok)
+{
+    return tok->chars[0].utf8[0] == '\n';
+}
+
 void CharacterInitialize(Character *ch, short x, const char *utf8, size_t bytes)
 {
     ch->utf8 = GC_STRNDUP(utf8, bytes);
+    ch->length = bytes;
     ch->x = x;
 
     XGlyphInfo extents;
@@ -195,6 +201,21 @@ short TokenInitialize(Token *tok, short x, const char *utf8, size_t bytes)
     tok->width = x - tok->x;
 
     return x;
+}
+
+short TokenEOF(Token *tok, short x)
+{
+    tok->x = x;
+    tok->nchars = 1;
+    tok->chars = GC_MALLOC(sizeof(Character));
+
+    CharacterInitialize(tok->chars, x - tok->x, "", 0);
+    return x;
+}
+
+bool TokenIsEOF(Token *tok)
+{
+    return tok->nchars == 1 && tok->chars[0].length == 0;
 }
 
 void InspectLine(VisualLine *line)
@@ -271,50 +292,71 @@ void JustifyLine(VisualLine *line, const PageInfo *page)
     }
 }
 
+
+bool FillLine(VisualLine *line, const char *text, const PageInfo *page, size_t *start_in_out)
+{
+    short x = page->margin_left;
+    Token *tokens = NULL;
+    size_t ntokens = 0;
+    size_t start = *start_in_out;
+    size_t next;
+    bool more_tokens;
+
+    while ((more_tokens = NextTokenBilingual(text, start, &next)) == true) {
+	tokens = GC_REALLOC(tokens, (ntokens + 1) * sizeof(Token));
+	size_t len = next - start;
+	x = TokenInitialize(&tokens[ntokens], x, &text[start], len);
+	bool line_is_full = x > page->margin_right && !(ntokens == 0 || TokenIsSpace(&tokens[ntokens]));
+	if (line_is_full) {
+	    // このトークンの追加をキャンセルする。
+	    tokens = GC_REALLOC(tokens, ntokens * sizeof(Token));
+	    break;
+	} else {
+	    start = next;
+	    if (TokenIsNewline(&tokens[ntokens])) {
+		ntokens++;
+		break;
+	    } else {
+		ntokens++;
+	    }
+	}
+    }
+
+    if (!more_tokens) {
+	tokens = GC_REALLOC(tokens, (ntokens + 1) * sizeof(Token));
+	TokenEOF(&tokens[ntokens], x);
+	ntokens++;
+    }
+
+    // 行の完成。
+    line->tokens = tokens;
+    line->ntokens = ntokens;
+    *start_in_out = start;
+
+    return more_tokens;
+}
+
+bool LastLineOfParagraph(VisualLine *line)
+{
+    return TokenIsNewline(&line->tokens[line->ntokens-1]);
+}
+
 VisualLine *CreateLines(const char *text, const PageInfo *page, size_t *lines_return)
 {
     VisualLine *lines = GC_MALLOC(MAX_LINES * sizeof(VisualLine));
     size_t nlines = 0;
 
     size_t start = 0;
-    size_t next;
     bool more_tokens;
 
     do {
+	assert( nlines <= MAX_LINES );
+	more_tokens = FillLine(&lines[nlines], text, page, &start);
+
+	if (more_tokens && !LastLineOfParagraph(&lines[nlines]))
+	    JustifyLine(&lines[nlines], page);
+
 	nlines++;
-	if (nlines == MAX_LINES) {
-	    fprintf(stderr, "too many lines\n");
-	    exit(1);
-	}
-
-	short x = page->margin_left;
-	Token *tokens = NULL;
-	size_t ntokens = 0;
-	while ((more_tokens = NextTokenBilingual(text, start, &next)) == true) {
-	    ntokens++;
-	    tokens = GC_REALLOC(tokens, ntokens * sizeof(Token));
-	    size_t len = next - start;
-	    x = TokenInitialize(&tokens[ntokens-1],
-				x,
-				&text[start],
-				len);
-	    if (x > page->margin_right && ntokens > 1 && !TokenIsSpace(&tokens[ntokens-1])) {
-		// このトークンの追加をキャンセルする。
-		ntokens--;
-		tokens = GC_REALLOC(tokens, ntokens * sizeof(Token));
-		break;
-	    }
-	    start = next;
-	    if (tokens[ntokens-1].chars[0].utf8[0] == '\n')
-		break;
-	}
-
-	// 行の完成。
-	lines[nlines-1].tokens = tokens;
-	lines[nlines-1].ntokens = ntokens;
-
-	if (more_tokens && tokens[ntokens-1].chars[0].utf8[0] != '\n')
-	    JustifyLine(&lines[nlines-1], page);
     } while (more_tokens);
 
     *lines_return = nlines;
@@ -437,11 +479,19 @@ void DrawLeadingBelowLine(XftDraw *draw, PageInfo *page, short y)
 
 void DrawBaseline(XftDraw *draw, PageInfo *page, short y)
 {
+#if 0
     // ベースラインを描画する。
     if (DRAW_BASELINE)
 	XftDrawRect(draw, ColorGetXftColor("gray90"),
 		    page->margin_left, y,
 		    page->margin_right - page->margin_left, 1);
+#else
+    // 下線。
+    if (DRAW_BASELINE)
+	XftDrawRect(draw, ColorGetXftColor("gray90"),
+		    page->margin_left, y + font->descent,
+		    page->margin_right - page->margin_left, 1);
+#endif
 }
 
 #define NEWLINE_SYMBOL "↓"
@@ -475,9 +525,23 @@ void DrawPrintableToken(XftDraw *draw, Token *tok, short y)
     }
 }
 
+#define EOF_SYMBOL "[EOF]"
+
+void DrawEOF(XftDraw *draw, short x, short y)
+{
+    XftDrawStringUtf8(draw,
+		      ColorGetXftColor("cyan4"),
+		      font,
+		      x, y,
+		      (FcChar8 *) EOF_SYMBOL,
+		      sizeof(EOF_SYMBOL) - 1);
+}
+
 void DrawToken(XftDraw *draw, Token *tok, short y)
 {
-    if (TokenIsSpace(tok)) {
+    if (TokenIsEOF(tok)) {
+	DrawEOF(draw, tok->x, y);
+    } else {
 	switch (tok->chars[0].utf8[0]) {
 	case ' ':
 	    DrawSpace(draw, tok->x, y, tok->width);
@@ -485,10 +549,10 @@ void DrawToken(XftDraw *draw, Token *tok, short y)
 	case '\n':
 	    DrawNewline(draw, tok->x, y);
 	    break;
-	}	
-    } else {
-	// 普通の文字からなるトークン
-	DrawPrintableToken(draw, tok, y);
+	default:
+	    // 普通の文字からなるトークン
+	    DrawPrintableToken(draw, tok, y);
+	}
     }
 }
 
