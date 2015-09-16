@@ -11,6 +11,9 @@ all: $(COMMANDS)
 clean:
 	rm -f $(COMMANDS)
 
+color.o: color.c
+	gcc $(CFLAGS) -I/usr/include/freetype2 -c $<
+
 font.o: font.c
 	gcc $(CFLAGS) -c $<
 
@@ -56,8 +59,8 @@ xfont-draw-xft: xfont-draw-xft.c
 xfont-eng-xft: xfont-eng-xft.c util.c
 	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11
 
-xfont-justify-xft: xfont-justify-xft.c util.o
-	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11 -lgc
+xfont-justify-xft: xfont-justify-xft.c util.o color.o
+	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11 -lXext -lgc
 
 xfont-info: xfont-info.c
 	gcc $(CFLAGS) -o $@ $^ -lX11

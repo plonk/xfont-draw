@@ -2,25 +2,39 @@
  * Helvetica で英文を表示するプログラム。両端揃え。
  */
 
+#include <alloca.h>
+#include <assert.h>
+#include <ctype.h>
+#include <gc.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <X11/Xlib.h>
-#include "util.h"
+
 #include <X11/Xft/Xft.h>
-#include <gc.h>
-#include <stdbool.h>
-#include <alloca.h>
+#include <X11/Xlib.h>
+#include <X11/extensions/Xdbe.h>
 
-#include <ctype.h>
-#include <assert.h>
+#include "color.h"
+#include "util.h"
 
-#define FONT_DESCRIPTION "Source Han Sans JP-20:matrix=1 0 0 1"
+#define FONT_DESCRIPTION "Source Han Sans JP-16:matrix=1 0 0 1"
 
 Display *disp;
 Window win;
+XdbeBackBuffer	 back_buffer;
 XftFont *font;
-XftColor black;
+
+size_t cursor_offset;
+size_t top_line;
+
+typedef struct {
+    size_t line;
+    size_t token;
+    size_t character;
+} CursorPath;
+
+CursorPath cursor_path;
 
 typedef struct {
   short x;
@@ -45,9 +59,54 @@ typedef struct {
     short margin_top, margin_right, margin_bottom, margin_left;
 } PageInfo;
 
+typedef struct {
+    VisualLine *lines;
+    size_t nlines;
+    PageInfo *page;
+    size_t max_offset;
+} Document;
+
+Document *doc;
+
 #define MAX_LINES 1024
 
+void CleanUp();
 int WordWidth(XftFont *font, const char *str, int len);
+const char *Utf8AdvanceChar(const char *utf8);
+static inline size_t Utf8CharBytes(const char *utf8);
+
+bool CursorPathEquals(CursorPath a, CursorPath b)
+{
+    return (a.line == b.line &&
+	    a.token == b.token &&
+	    a.character == b.character);
+}
+
+// str の  start 位置からトークン(単語あるいは空白)を切り出す。
+// トークンを構成する最後の文字の次の位置が *end に設定される。
+// トークンが読み出せた場合は 1、さもなくば 0 を返す。
+int NextTokenBilingual(const char *utf8, size_t start, size_t *end)
+{
+    const char *p = utf8 + start;
+
+    /* トークナイズするものがない */
+    if (*p == '\0')
+	return 0;
+
+    if (*p == ' ') {
+	do {
+	    p = Utf8AdvanceChar(p);
+	} while (*p && *p == ' ');
+    } else if (Utf8CharBytes(p) == 1 && *p >= 0x21 && *p <= 0x7e) {
+	do  {
+	    p = Utf8AdvanceChar(p);
+	} while (*p && Utf8CharBytes(p) == 1 && *p >= 0x21 && *p <= 0x7e);
+    } else {
+	p = Utf8AdvanceChar(p);
+    }
+    *end = p - utf8;
+    return 1;
+}
 
 static inline size_t Utf8CharBytes(const char *utf8) {
     unsigned char b = *utf8;
@@ -80,6 +139,19 @@ const char *Utf8AdvanceChar(const char *utf8)
     return utf8 + Utf8CharBytes(utf8);
 }
 
+size_t Utf8CountChars(const char *utf8)
+{
+    size_t count;
+
+    count = 0;
+    while (*utf8 != '\0') {
+	utf8 = Utf8AdvanceChar(utf8);
+	count++;
+    }
+
+    return count;
+}
+
 bool TokenIsSpace(Token *tok)
 {
     return isspace(tok->chars[0].utf8[0]);
@@ -109,6 +181,9 @@ void TokenCreateInPlace(Token *tok, short *x_in_out, const char *utf8, size_t by
 			       x - tok->x,
 			       p,
 			       Utf8CharBytes(p));
+	// if (tok->chars[0].utf8[0] == '\n')
+	// x += 0;
+	// else
 	x += tok->chars[tok->nchars - 1].width;
     }
     tok->width = x - *x_in_out;
@@ -189,7 +264,7 @@ void JustifyLine(VisualLine *line, const PageInfo *page)
     }
 }
 
-VisualLine *CreateDocument(const char *text, const PageInfo *page, size_t *lines_return)
+VisualLine *CreateLines(const char *text, const PageInfo *page, size_t *lines_return)
 {
     VisualLine *lines = GC_MALLOC(MAX_LINES * sizeof(VisualLine));
     size_t nlines = 0;
@@ -208,7 +283,7 @@ VisualLine *CreateDocument(const char *text, const PageInfo *page, size_t *lines
 	short x = page->margin_left;
 	Token *tokens = NULL;
 	size_t ntokens = 0;
-	while ((more_tokens = NextToken(text, start, &next)) == true) {
+	while ((more_tokens = NextTokenBilingual(text, start, &next)) == true) {
 	    ntokens++;
 	    tokens = GC_REALLOC(tokens, ntokens * sizeof(Token));
 	    size_t len = next - start;
@@ -223,13 +298,15 @@ VisualLine *CreateDocument(const char *text, const PageInfo *page, size_t *lines
 		break;
 	    }
 	    start = next;
+	    if (tokens[ntokens-1].chars[0].utf8[0] == '\n')
+		break;
 	}
 
 	// 行の完成。
 	lines[nlines-1].tokens = tokens;
 	lines[nlines-1].ntokens = ntokens;
 
-	if (more_tokens)
+	if (more_tokens && tokens[ntokens-1].chars[0].utf8[0] != '\n')
 	    JustifyLine(&lines[nlines-1], page);
     } while (more_tokens);
 
@@ -237,7 +314,22 @@ VisualLine *CreateDocument(const char *text, const PageInfo *page, size_t *lines
     return lines;
 }
 
+Document *CreateDocument(const char *text, PageInfo *page)
+{
+    size_t nlines;
+
+    Document *doc = GC_MALLOC(sizeof(Document));
+    doc->lines = CreateLines(text, page, &nlines);
+    doc->nlines = nlines;
+    doc->page = page;
+
+    doc->max_offset = Utf8CountChars(text);
+
+    return doc;
+}
+
 int LeadingAboveLine(XftFont *font);
+int LeadingBelowLine(XftFont *font);
 
 // 行の上に置くべき行間を算出する。
 int LeadingAboveLine(XftFont *font)
@@ -245,6 +337,14 @@ int LeadingAboveLine(XftFont *font)
     int lineSpacing = font->height - (font->ascent + font->descent);
 
     return lineSpacing / 2;
+}
+
+int LeadingBelowLine(XftFont *font)
+{
+    int lineSpacing = font->height - (font->ascent + font->descent);
+
+    // 1ピクセルの余りがあれば行の下に割り当てられる。
+    return lineSpacing / 2 + lineSpacing % 2;
 }
 
 void GetGlyphInfo(char ch, XftFont *font, XGlyphInfo *extents_return)
@@ -291,111 +391,375 @@ void GetPageInfo(PageInfo *page)
     page->margin_left = 50;
 }
 
-void DrawLine(XftDraw *draw, VisualLine *line, short y)
+CursorPath ToCursorPath(Document *doc, size_t offset)
 {
+    size_t count = 0;
+
+    for (int i = 0; i < doc->nlines; i++) {
+	VisualLine *line = &doc->lines[i];
+	for (int j = 0; j < line->ntokens; j++) {
+	    Token *tok = &line->tokens[j];
+	    for (int k = 0; k < tok->nchars; k++) {
+		if (count == offset) {
+		    CursorPath path = {
+			.line = i,
+			.token = j,
+			.character = k
+		    };
+		    return path;
+		}
+		count++;
+	    }
+	}
+    }
+    fprintf(stderr, "ToCursorPath: out of range\n");
+    abort();
+}
+
+#define DRAW_BASELINE 1
+#define DRAW_LEADING 0
+#define DRAW_SPACE 1
+#define DRAW_RETURN 1
+#define DRAW_MARGINS 0
+
+void DrawCursor(XftDraw *draw, short x, short y)
+{
+#if 0
+    XftDrawRect(draw, ColorGetXftColor("magenta"),
+		x - 1, y - font->ascent,
+		2, font->ascent + font->descent);
+#else
+    XftDrawRect(draw, ColorGetXftColor("magenta"),
+		x - 1, y - font->ascent - LeadingAboveLine(font),
+		2, font->height);
+#endif
+};
+
+void DrawLeadingAboveLine(XftDraw *draw, PageInfo *page, short y)
+{
+    XftDrawRect(draw, ColorGetXftColor("navajo white"),
+		page->margin_left, y - font->ascent - LeadingAboveLine(font),
+		page->margin_right - page->margin_left, LeadingAboveLine(font));
+}
+
+void DrawLeadingBelowLine(XftDraw *draw, PageInfo *page, short y)
+{
+   XftDrawRect(draw, ColorGetXftColor("cornflower blue"),
+		page->margin_left, y + font->descent,
+		page->margin_right - page->margin_left, LeadingBelowLine(font));
+}
+
+void DrawBaseline(XftDraw *draw, PageInfo *page, short y)
+{
+    XftDrawRect(draw, ColorGetXftColor("gray90"),
+		page->margin_left, y,
+		page->margin_right - page->margin_left, 1);
+}
+
+void DrawLine(XftDraw *draw, PageInfo *page, VisualLine *lines, size_t index, short y)
+{
+    VisualLine *line = &lines[index];
+
+    // 上の行間を描画する。
+    if (DRAW_LEADING)
+	DrawLeadingAboveLine(draw, page, y);
+
+    // 下の行間を描画する。
+    if (DRAW_LEADING)
+	DrawLeadingBelowLine(draw, page, y);
+
+    // ベースラインを描画する。
+    if (DRAW_BASELINE)
+	DrawBaseline(draw, page, y);
+
     // 行の描画
     for (int i = 0; i < line->ntokens; i++) {
 	Token *tok = &line->tokens[i];
 
-	if (TokenIsSpace(tok))
-	    continue;
+	if (TokenIsSpace(tok)) {
+	    switch (tok->chars[0].utf8[0]) {
+	    case ' ':
+		if (!DRAW_SPACE) break;
+		XftDrawRect(draw, ColorGetXftColor("misty rose"),
+			    tok->x, y - font->ascent,
+			    tok->width, font->ascent + font->descent);
+		break;
+	    case '\n':
+		if (!DRAW_RETURN) break;
+		XftDrawStringUtf8(draw,
+				  ColorGetXftColor("cyan4"),
+				  font,
+				  tok->x, y,
+				  (FcChar8 *) "↓",
+				  strlen("↓"));
+		break;
+	    default:
+		;
+	    }	
+	    for (int j = 0; j < tok->nchars; j++) {
+		Character *ch = &tok->chars[j];
+		CursorPath here = { .line = index, .token = i, .character = j };
 
-	for (int j = 0; j < tok->nchars; j++) {
-	    Character *ch = &tok->chars[j];
+		if (CursorPathEquals(cursor_path, here))
+		    DrawCursor(draw, tok->x + ch->x, y);
+	    }
+	} else {
+	    // 普通の文字からなるトークン
+	    for (int j = 0; j < tok->nchars; j++) {
+		Character *ch = &tok->chars[j];
+		CursorPath here = { .line = index, .token = i, .character = j };
 
-	    XftDrawStringUtf8(draw, &black, font,
-			      tok->x + ch->x, y,
-			      (FcChar8 *) ch->utf8,
-			      strlen(ch->utf8));
+		XftDrawStringUtf8(draw,
+				  ColorGetXftColor("black"),
+				  font,
+				  tok->x + ch->x, y,
+				  (FcChar8 *) ch->utf8,
+				  strlen(ch->utf8));
+
+		if (CursorPathEquals(cursor_path, here))
+		    DrawCursor(draw, tok->x + ch->x, y);
+	    }
 	}
     }
 }
 
-size_t DrawDocument(XftDraw *draw, VisualLine *lines, size_t nlines, PageInfo *page)
+size_t DrawDocument(XftDraw *draw, Document *doc, size_t start)
 {
-    size_t start = 0;
-    short y = page->margin_top + LeadingAboveLine(font) + font->ascent;
+    short y = doc->page->margin_top + LeadingAboveLine(font) + font->ascent;
 
-    for (size_t i = start; i < nlines; i++) {
-	DrawLine(draw, &lines[i], y);
+    for (size_t i = start; i < doc->nlines; i++) {
+	DrawLine(draw, doc->page, doc->lines, i, y);
 	y += font->height;
 
 	short next_line_ink_bottom = y + LeadingAboveLine(font) + font->ascent + font->descent;
-	if (next_line_ink_bottom > page->margin_bottom)
+	if (next_line_ink_bottom > doc->page->margin_bottom)
 	    return i;
     }
-    return nlines;
+    return doc->nlines - 1;
 }
 
-void Redraw(const char *text)
+void MarkMargins(PageInfo *page)
 {
-    PageInfo page;
-    GetPageInfo(&page);
+    // ページのサイズ。
+    const int lm	= page->margin_left   - 1;
+    const int rm	= page->margin_right  + 1;
+    const int tm	= page->margin_top    - 1;
+    const int bm	= page->margin_bottom + 1;
 
-    if (page.width < page.margin_left * 2) {
+    // マークを構成する線分の長さ。
+    const int len = 10;
+
+    GC gc;
+    gc = XCreateGC(disp, back_buffer, 0, NULL);
+    XSetForeground(disp, gc, ColorGetPixel("gray80"));
+
+    // _|
+    XDrawLine(disp, back_buffer, gc, lm - len, tm, lm, tm); // horizontal
+    XDrawLine(disp, back_buffer, gc, lm, tm - len, lm, tm); // vertical
+
+    //        |_
+    XDrawLine(disp, back_buffer, gc, rm, tm, rm + len, tm);
+    XDrawLine(disp, back_buffer, gc, rm, tm - len, rm, tm);
+
+    // -|
+    XDrawLine(disp, back_buffer, gc, lm - len, bm, lm, bm);
+    XDrawLine(disp, back_buffer, gc, lm, bm, lm, bm + len);
+
+    //        |-
+    XDrawLine(disp, back_buffer, gc, rm, bm, rm + len, bm);
+    XDrawLine(disp, back_buffer, gc, rm, bm, rm, bm + len);
+
+    XFreeGC(disp, gc);
+}
+
+void Redraw()
+{
+	    printf("%d\n", (int) cursor_offset);
+	    printf("%d.%d.%d\n",
+		   (int) cursor_path.line,
+		   (int) cursor_path.token,
+		   (int) cursor_path.character);
+
+    if (doc->page->width < doc->page->margin_left * 2) {
 	fprintf(stderr, "Viewport size too small.\n");
 	return;
     }
 
-    XftDraw *draw = XftDrawCreate(disp, win, DefaultVisual(disp,DefaultScreen(disp)), DefaultColormap(disp,DefaultScreen(disp)));
+    XftDraw *draw = XftDrawCreate(disp, back_buffer,
+				  DefaultVisual(disp,DefaultScreen(disp)), DefaultColormap(disp,DefaultScreen(disp)));
 
-    XClearWindow(disp, win);
+ Retry:
+    XftDrawRect(draw, ColorGetXftColor("white"), 0, 0, doc->page->width, doc->page->height);
 
-    size_t nlines;
-    VisualLine *lines = CreateDocument(text, &page, &nlines);
+    if (DRAW_MARGINS)
+	MarkMargins(doc->page);
 
-    DrawDocument(draw, lines, nlines, &page);
+    size_t last_line = DrawDocument(draw, doc, top_line);
+
+    if (cursor_path.line > last_line) {
+	top_line++;
+	goto Retry;
+    } else if (cursor_path.line < top_line) {
+	top_line = cursor_path.line;
+	goto Retry;
+    }
+
+    // フロントバッファーとバックバッファーを入れ替える。
+    // 操作後、バックバッファーの内容は未定義になる。
+    XdbeSwapInfo swap_info = {
+	.swap_window = win,
+	.swap_action = XdbeUndefined,
+    };
+    XdbeSwapBuffers(disp, &swap_info, 1);
+}
+
+void InitializeBackBuffer()
+{
+    Status st;
+    int major, minor;
+
+    st = XdbeQueryExtension(disp, &major, &minor);
+    if (st == (Status) 0) {
+	fprintf(stderr, "Xdbe extension unsupported by server.\n");
+	exit(1);
+    }
+
+    back_buffer = XdbeAllocateBackBufferName(disp, win, XdbeUndefined);
 }
 
 void Initialize()
 {
 
     disp = XOpenDisplay(NULL); // open $DISPLAY
+
+    ColorInitialize(disp);
+
     win = XCreateSimpleWindow(disp, DefaultRootWindow(disp), 0, 0, 640, 480, 0, 0, WhitePixel(disp, DefaultScreen(disp)));	
+
+    InitializeBackBuffer();
+
+    // awesome ウィンドウマネージャーの奇妙さかもしれないが、マップす
+    // る前にプロトコルを登録しないと delete 時に尊重されないので、こ
+    // のタイミングで登録する。
+    Atom WM_DELETE_WINDOW = XInternAtom(disp, "WM_DELETE_WINDOW", False); 
+    XSetWMProtocols(disp, win, &WM_DELETE_WINDOW, 1);
+
     XMapWindow(disp, win);
     // 暴露イベントを受け取る。
-    XSelectInput(disp, win, ExposureMask);
+    XSelectInput(disp, win, ExposureMask | KeyPressMask);
 
     font = XftFontOpenName(disp, DefaultScreen(disp), FONT_DESCRIPTION);
 
-    // 「黒」を割り当てる。
-    XftColorAllocName(disp,
-		      DefaultVisual(disp,DefaultScreen(disp)),
-		      DefaultColormap(disp,DefaultScreen(disp)),
-		      "black", &black);
+    atexit(CleanUp);
 }
 
-void CleanUp(Display *disp, Window win, XftFont *font)
+void CleanUp()
 {
+    fprintf(stderr, "cleanup\n");
     XDestroyWindow(disp, win);
     XCloseDisplay(disp);
 }
 
-int main()
+char *ReadFile(const char *filepath)
 {
+    FILE *file;
+
+    file = fopen(filepath, "r");
+    if (file == NULL) {
+	perror("fopen");
+	exit(1);
+    }
+
+    fseek(file, 0, SEEK_END);
+
+    long length;
+    length = ftell(file);
+
+    rewind(file);
+
+    char *buf = GC_MALLOC(length);
+
+    size_t bytes_read;
+    bytes_read = fread(buf, 1, length, file);
+
+    if (bytes_read != length) {
+	fprintf(stderr, "file size mismatch");
+	exit(1);
+    }
+
+    fclose(file);
+
+    return buf;
+}
+
+void HandleKeyPress(XKeyEvent *ev)
+{
+    bool needs_redraw = false;
+
+    KeySym sym;
+    sym = XLookupKeysym(ev, 0);
+
+    switch (sym) {
+    case XK_Right:
+	if (cursor_offset != doc->max_offset) {
+	    cursor_offset++;
+	    cursor_path = ToCursorPath(doc, cursor_offset);
+	    needs_redraw = true;
+	}
+	break;
+    case XK_Left:
+	if (cursor_offset != 0) {
+	    cursor_offset--;
+	    cursor_path = ToCursorPath(doc, cursor_offset);
+	    needs_redraw = true;
+	}
+	break;
+    case XK_Up:
+	needs_redraw = true;
+	break;
+    case XK_Down:
+	needs_redraw = true;
+	break;
+    }
+
+    if (needs_redraw) {
+	Redraw();
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2) {
+	fprintf(stderr, "Usage: %s FILENAME\n", argv[0]);
+	exit(1);
+    }
 
     Initialize();
 
+    const char *text = ReadFile(argv[1]);
+
+    PageInfo page;
+    GetPageInfo(&page);
+    doc = CreateDocument(text, &page);
+    cursor_path = ToCursorPath(doc, cursor_offset);
+
     XEvent ev;
-
-    const char *msg = "Lorem ipsum dolor sit amet, "
-	"consectetur adipiscing elit, sed do eiusmod "
-	"tempor incididunt ut labore et dolore magna aliqua. "
-	"Ut enim ad minim veniam, quis nostrud exercitation "
-	"ullamco laboris nisi ut aliquip ex ea commodo consequat. "
-	"Duis aute irure dolor in reprehenderit in voluptate "
-	"velit esse cillum dolore eu fugiat nulla pariatur. "
-	"Excepteur sint occaecat cupidatat non proident, sunt "
-	"in culpa qui officia deserunt mollit anim id est laborum.";
-
     while (1) { // イベントループ
 	XNextEvent(disp, &ev);
 
-	if (ev.type != Expose)
-	    continue;
-
-	Redraw(msg);
+	switch (ev.type) {
+	case Expose:
+	    puts("expose");
+	    GetPageInfo(&page);
+	    doc = CreateDocument(text, &page);
+	    Redraw();
+	    break;
+	case KeyPress:
+	    puts("keypress");
+	    HandleKeyPress((XKeyEvent *) &ev);
+	    break;
+	case ClientMessage:
+	    exit(0);
+	}
     }
-
-    CleanUp(disp, win, font);
 }
