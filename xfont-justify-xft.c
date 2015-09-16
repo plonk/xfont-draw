@@ -181,9 +181,6 @@ void TokenCreateInPlace(Token *tok, short *x_in_out, const char *utf8, size_t by
 			       x - tok->x,
 			       p,
 			       Utf8CharBytes(p));
-	// if (tok->chars[0].utf8[0] == '\n')
-	// x += 0;
-	// else
 	x += tok->chars[tok->nchars - 1].width;
     }
     tok->width = x - *x_in_out;
@@ -396,17 +393,10 @@ CursorPath ToCursorPath(Document *doc, size_t offset)
     size_t count = 0;
 
     for (int i = 0; i < doc->nlines; i++) {
-	VisualLine *line = &doc->lines[i];
-	for (int j = 0; j < line->ntokens; j++) {
-	    Token *tok = &line->tokens[j];
-	    for (int k = 0; k < tok->nchars; k++) {
+	for (int j = 0; j < doc->lines[i].ntokens; j++) {
+	    for (int k = 0; k < doc->lines[i].tokens[j].nchars; k++) {
 		if (count == offset) {
-		    CursorPath path = {
-			.line = i,
-			.token = j,
-			.character = k
-		    };
-		    return path;
+		    return (CursorPath) { .line = i, .token = j, .character = k };
 		}
 		count++;
 	    }
