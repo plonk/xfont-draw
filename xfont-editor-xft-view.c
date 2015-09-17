@@ -317,8 +317,9 @@ CursorPath ToCursorPath(Document *doc, size_t offset)
 #define DRAW_BASELINE 1
 #define DRAW_LEADING 0
 #define DRAW_SPACE 1
-#define DRAW_RETURN 1
+#define DRAW_NEWLINE 1
 #define DRAW_MARGINS 0
+#define MARK_TOKENS 1
 
 static void DrawCursor(XftDraw *draw, short x, short y)
 {
@@ -365,7 +366,7 @@ static void DrawBaseline(XftDraw *draw, PageInfo *page, short y)
     // 下線。
     if (DRAW_BASELINE)
 	XftDrawRect(draw, ColorGetXftColor("gray90"),
-		    page->margin_left, y + font->descent,
+		    page->margin_left, y + font->descent + LeadingBelowLine(font),
 		    page->margin_right - page->margin_left, 1);
 #endif
 }
@@ -373,7 +374,7 @@ static void DrawBaseline(XftDraw *draw, PageInfo *page, short y)
 #define NEWLINE_SYMBOL "↓"
 static void DrawNewline(XftDraw *draw, short x, short y)
 {
-    if (DRAW_RETURN)
+    if (DRAW_NEWLINE)
 	XftDrawStringUtf8(draw,
 			  ColorGetXftColor("cyan4"),
 			  font,
@@ -398,6 +399,11 @@ static void DrawPrintableToken(XftDraw *draw, Token *tok, short y)
 			  tok->x + tok->chars[i].x, y,
 			  (FcChar8 *) tok->chars[i].utf8,
 			  strlen(tok->chars[i].utf8));
+	if (MARK_TOKENS)
+	    // トークン区切りをあらわす下線を引く。
+	    XftDrawRect(draw, ColorGetXftColor("green4"),
+			tok->x + 2, y + font->descent + LeadingBelowLine(font),
+			tok->width - 4, 2);
     }
 }
 

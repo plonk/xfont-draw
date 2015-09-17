@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <gc.h>
 
 #include "xfont-editor-xft-utf8.h"
@@ -96,10 +97,26 @@ static int IsAsciiPrintable(const char *p)
     return Utf8CharBytes(p) == 1 && *p >= 0x21 && *p <= 0x7e;
 }
 
+static int ctype(const char *utf8, int (*ctype_func)(int))
+{
+    return Utf8CharBytes(utf8) == 1 && ctype_func(utf8[0]);
+}
+
 static int IsForbiddenAtStart(const char *utf8)
 {
-    return strncmp(utf8, "、", sizeof("、")-1) == 0||
-	strncmp(utf8, "。", sizeof("。")-1) == 0;
+    static const char chars[] = ",)]｝、〕〉》」』】〙〗〟’”｠»"
+	"ゝゞーァィゥェォッャュョヮヵヶぁぃぅぇぉっゃゅょゎゕゖ"
+	"ㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇷ゚ㇺㇻㇼㇽㇾㇿ々〻"
+	"‐゠–〜～"
+	"?!‼⁇⁈⁉"
+	"・:;/"
+	"。.";
+
+    for (const char *p = chars; *p != '\0'; p = Utf8AdvanceChar(p)) {
+	if (strncmp(utf8, p, Utf8CharBytes(p)) == 0)
+	    return 1;
+    }
+    return 0;
 }
 
 // str の  start 位置からトークン(単語あるいは空白)を切り出す。
@@ -116,16 +133,18 @@ int NextTokenBilingual(const char *utf8, size_t start, size_t *end)
     if (*p == ' ') {
 	do {
 	    p = Utf8AdvanceChar(p);
-	} while (*p && (*p == ' ' || IsForbiddenAtStart(p)));
-    } else if (IsAsciiPrintable(p)) {
+	} while (*p && *p == ' ');
+    } else if (ctype(p, isalnum) || *p == '\'') {
 	do  {
 	    p = Utf8AdvanceChar(p);
-	} while (*p && (IsAsciiPrintable(p) || IsForbiddenAtStart(p)));
+	} while (*p && (ctype(p, isalnum) || *p == '\''));
     } else {
-	do {
-	    p = Utf8AdvanceChar(p);
-	} while (*p && IsForbiddenAtStart(p));
+	p = Utf8AdvanceChar(p);
     }
+
+    while (*p && IsForbiddenAtStart(p))
+	p = Utf8AdvanceChar(p);
+
     *end = p - utf8;
     return 1;
 }
