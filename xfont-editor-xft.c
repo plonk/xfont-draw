@@ -15,45 +15,22 @@
 #include <X11/Xlib.h>
 #include <X11/extensions/Xdbe.h>
 
-#include "color.h"
 #include "util.h"
 #include "xfont-editor-xft-utf8.h"
 #include "xfont-editor-xft.h"
 #include "xfont-editor-xft-view.h"
 
-#define FONT_DESCRIPTION "Source Han Sans JP-16:matrix=1 0 0 1"
-
-Display *disp;
-Window win;
-XdbeBackBuffer	 back_buffer;
-XftFont *font;
+static Display *disp;
+static Window win;
 
 void CleanUp();
-
-void InitializeBackBuffer()
-{
-    Status st;
-    int major, minor;
-
-    st = XdbeQueryExtension(disp, &major, &minor);
-    if (st == (Status) 0) {
-	fprintf(stderr, "Xdbe extension unsupported by server.\n");
-	exit(1);
-    }
-
-    back_buffer = XdbeAllocateBackBufferName(disp, win, XdbeUndefined);
-}
 
 void Initialize()
 {
 
     disp = XOpenDisplay(NULL); // open $DISPLAY
 
-    ColorInitialize(disp);
-
     win = XCreateSimpleWindow(disp, DefaultRootWindow(disp), 0, 0, 640, 480, 0, 0, WhitePixel(disp, DefaultScreen(disp)));	
-
-    InitializeBackBuffer();
 
     // awesome ウィンドウマネージャーの奇妙さかもしれないが、マップす
     // る前にプロトコルを登録しないと delete 時に尊重されないので、こ
@@ -64,8 +41,6 @@ void Initialize()
     XMapWindow(disp, win);
     // 暴露イベントを受け取る。
     XSelectInput(disp, win, ExposureMask | KeyPressMask);
-
-    font = XftFontOpenName(disp, DefaultScreen(disp), FONT_DESCRIPTION);
 
     atexit(CleanUp);
 }
@@ -104,6 +79,21 @@ void HandleKeyPress(XKeyEvent *ev)
     }
 }
 
+void GetPageInfo(PageInfo *page)
+{
+    // ウィンドウのサイズを取得する。
+    XWindowAttributes attrs;
+    XGetWindowAttributes(disp, win, &attrs);
+
+    page->width = attrs.width;
+    page->height = attrs.height;
+
+    page->margin_top = 50;
+    page->margin_right = attrs.width - 50;
+    page->margin_bottom = attrs.height - 50;
+    page->margin_left = 50;
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 2) {
@@ -117,7 +107,7 @@ int main(int argc, char *argv[])
 
     PageInfo page;
     GetPageInfo(&page);
-    ViewInitialize(text, &page);
+    ViewInitialize(disp, win, text, &page);
 
     XEvent ev;
     while (1) { // イベントループ

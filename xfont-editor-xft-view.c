@@ -15,10 +15,10 @@
 #include "xfont-editor-xft-utf8.h"
 #include "xfont-editor-xft-view.h"
 
-extern Display *disp;
-extern Window win;
-extern XdbeBackBuffer	 back_buffer;
-extern XftFont *font;
+static Display *disp;
+static Window win;
+static XdbeBackBuffer	 back_buffer;
+static XftFont *font;
 
 static char *text;
 static Document *doc;
@@ -281,21 +281,6 @@ int WordWidth(XftFont *font, const char *str, int bytes)
     return extents.xOff;
 }
 
-void GetPageInfo(PageInfo *page)
-{
-    // ウィンドウのサイズを取得する。
-    XWindowAttributes attrs;
-    XGetWindowAttributes(disp, win, &attrs);
-
-    page->width = attrs.width;
-    page->height = attrs.height;
-
-    page->margin_top = 50;
-    page->margin_right = attrs.width - 50;
-    page->margin_bottom = attrs.height - 50;
-    page->margin_left = 50;
-}
-
 CursorPath ToCursorPath(Document *doc, size_t offset)
 {
     size_t count = 0;
@@ -554,10 +539,36 @@ void Redraw()
 	.swap_action = XdbeUndefined,
     };
     XdbeSwapBuffers(disp, &swap_info, 1);
+
+    XftDrawDestroy(draw);
 }
 
-void ViewInitialize(const char *aText, PageInfo *page)
+
+void InitializeBackBuffer()
 {
+    Status st;
+    int major, minor;
+
+    st = XdbeQueryExtension(disp, &major, &minor);
+    if (st == (Status) 0) {
+	fprintf(stderr, "Xdbe extension unsupported by server.\n");
+	exit(1);
+    }
+
+    back_buffer = XdbeAllocateBackBufferName(disp, win, XdbeUndefined);
+}
+
+#define FONT_DESCRIPTION "Source Han Sans JP-16:matrix=1 0 0 1"
+
+void ViewInitialize(Display *aDisp, Window aWin, 
+		    const char *aText, PageInfo *page)
+{
+    disp = aDisp;
+    win = aWin;
+    ColorInitialize(disp);
+    InitializeBackBuffer();
+    font = XftFontOpenName(disp, DefaultScreen(disp), FONT_DESCRIPTION);
+
     text = GC_STRDUP(aText);
     cursor_offset = 0;
     SetPageInfo(page);
