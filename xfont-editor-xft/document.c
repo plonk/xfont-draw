@@ -7,8 +7,8 @@
 #include <assert.h>
 
 #include "util.h"
-#include "xfont-editor-xft.h"
-#include "xfont-editor-xft-utf8.h"
+#include "editor.h"
+#include "utf8-string.h"
 #include "document.h"
 #include "hash.h"
 

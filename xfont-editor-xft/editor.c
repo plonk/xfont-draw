@@ -16,9 +16,9 @@
 #include <X11/extensions/Xdbe.h>
 
 #include "util.h"
-#include "xfont-editor-xft-utf8.h"
-#include "xfont-editor-xft.h"
-#include "xfont-editor-xft-view.h"
+#include "utf8-string.h"
+#include "editor.h"
+#include "view.h"
 
 static Display *disp;
 static Window win;

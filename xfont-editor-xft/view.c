@@ -8,9 +8,8 @@
 #include <X11/Xlib.h>
 #include <X11/extensions/Xdbe.h>
 
-#include "xfont-editor-xft.h"
-#include "xfont-editor-xft-utf8.h"
-#include "xfont-editor-xft-view.h"
+#include "utf8-string.h"
+#include "view.h"
 #include "document.h"
 
 static Display *disp;

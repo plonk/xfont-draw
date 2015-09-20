@@ -9,9 +9,9 @@
 
 #include <gc.h>
 
-#include "xfont-editor-xft-view.h"
-#include "xfont-editor-xft.h"
-#include "xfont-editor-xft-utf8.h"
+#include "view.h"
+#include "editor.h"
+#include "utf8-string.h"
 
 
 void quit_call(void);

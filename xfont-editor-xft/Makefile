@@ -1,8 +1,8 @@
 CC=gcc
 CFLAGS=-g -Wall -std=c11 -I/usr/include/freetype2
-VIEW_SRCS=color.c document.c hash.c util.c xfont-editor-xft-utf8.c xfont-editor-xft-view.c
+VIEW_SRCS=color.c document.c hash.c util.c utf8-string.c view.c
 VIEW_OBJS=$(VIEW_SRCS:.c=.o)
-TARGETS=xfont-editor-xft draw
+TARGETS=editor draw
 LIBS=-lXft -lX11 -lXext -lfontconfig -lgc
 TOOLKIT_LIBS=-lXm -lXt
 
@@ -19,7 +19,7 @@ clean:
 view.a: $(VIEW_OBJS)
 	ar cr $@ $^
 
-xfont-editor-xft: xfont-editor-xft.o view.a
+editor: editor.o view.a
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 draw: draw.o view.a

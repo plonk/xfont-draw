@@ -2,7 +2,7 @@
 #define XFONT_EDITOR_XFT_VIEW_H
 
 #include <stdbool.h>
-#include "xfont-editor-xft.h"
+#include "editor.h"
 
 void ViewSetOption(const char *name, bool b);
 void Redraw();
