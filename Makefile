@@ -10,13 +10,18 @@ subdirs := xfont-editor-xft
 
 .PHONY: all $(subdirs)
 
+all: $(COMMANDS) $(subdirs)
+
 $(subdirs):
 	$(MAKE) -C $@
 
-all: $(COMMANDS) $(subdirs)
-
-clean:
+clean: clean-subdirs
 	rm -f $(COMMANDS)
+
+clean-subdirs:
+	for dir in $(subdirs); \
+	do make -C $$dir clean; \
+	done
 
 color.o: color.c
 	gcc $(CFLAGS) -I/usr/include/freetype2 -c $<

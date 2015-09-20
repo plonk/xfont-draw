@@ -22,5 +22,5 @@ view.a: $(VIEW_OBJS)
 xfont-editor-xft: xfont-editor-xft.o view.a
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-draw: xfont-editor-xft.o view.a
+draw: draw.o view.a
 	$(CC) $(LDFLAGS) -o $@ $^ $(TOOLKIT_LIBS) $(LIBS)
