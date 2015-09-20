@@ -4,9 +4,16 @@ CXXFLAGS=-std=c++11 -g -Wall
 COMMANDS=xfont-draw xfont-info xfont-eng xfont-justify xfont-hyphen \
 	xfont-unicode-cpp xfont-pagination xfont-font-combining \
 	xfont-double-buffering xfont-input xfont-im xfont-xft xfont-draw-xft \
-	xfont-eng-xft xfont-justify-xft xfont-editor-xft draw
+	xfont-eng-xft xfont-justify-xft
 
-all: $(COMMANDS)
+subdirs := xfont-editor-xft
+
+.PHONY: all $(subdirs)
+
+$(subdirs):
+	$(MAKE) -C $@
+
+all: $(COMMANDS) $(subdirs)
 
 clean:
 	rm -f $(COMMANDS)
@@ -17,19 +24,7 @@ color.o: color.c
 font.o: font.c
 	gcc $(CFLAGS) -c $<
 
-document.o: document.c
-	gcc $(CFLAGS) -c $<
-
-hash.o: hash.c
-	gcc $(CFLAGS) -c $<
-
 jisx0208.o: jisx0208.c
-	gcc $(CFLAGS) -c $<
-
-xfont-editor-xft-view.o: xfont-editor-xft-view.c
-	gcc $(CFLAGS) -I/usr/include/freetype2 -c $<
-
-xfont-editor-xft-utf8.o: xfont-editor-xft-utf8.c
 	gcc $(CFLAGS) -c $<
 
 xfont-im: xfont-im.c util.o jisx0208.o font.o
@@ -74,14 +69,5 @@ xfont-eng-xft: xfont-eng-xft.c util.c
 xfont-justify-xft: xfont-justify-xft.c util.o color.o
 	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11 -lXext -lgc
 
-xfont-editor-xft: xfont-editor-xft.c util.o color.o xfont-editor-xft-utf8.o xfont-editor-xft-view.o document.o hash.o
-	gcc $(CFLAGS) -I/usr/include/freetype2 -o $@ $^ -lXft -lX11 -lXext -lfontconfig -lgc
-
 xfont-info: xfont-info.c
 	gcc $(CFLAGS) -o $@ $^ -lX11
-
-util.o: util.c
-	gcc $(CFLAGS) -c $^
-
-draw: draw.o xfont-editor-xft-utf8.o xfont-editor-xft-view.o util.o color.o hash.o document.o
-	gcc $(CFLAGS) -o draw -g $^ -lXm -lXt -lX11 -lXext -lXft -lfontconfig -lgc
