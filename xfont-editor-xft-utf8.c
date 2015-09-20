@@ -8,11 +8,12 @@
 
 size_t Utf8CharBytes(const char *utf8) {
     unsigned char b = *utf8;
+    unsigned char c = b & 0xc0;
 
-    if ((b & 0xc0) == 0x00 ||
-	(b & 0xc0) == 0x40) {
+    if (c == 0x00 ||
+	c == 0x40) {
 	return 1;
-    } else if ((b & 0xc0) == 0xc0) {
+    } else if (c == 0xc0) {
 	if (b >> 1 == 126) {
 	    return 6;
 	} else if (b >> 2 == 62) {
@@ -92,17 +93,17 @@ char *ReadFile(const char *filepath)
     return buf;
 }
 
-static int IsAsciiPrintable(const char *p)
-{
-    return Utf8CharBytes(p) == 1 && *p >= 0x21 && *p <= 0x7e;
-}
+/* static int IsAsciiPrintable(const char *p) */
+/* { */
+/*     return Utf8CharBytes(p) == 1 && *p >= 0x21 && *p <= 0x7e; */
+/* } */
 
-static int ctype(const char *utf8, int (*ctype_func)(int))
+int CTypeOf(const char *utf8, int (*ctype_func)(int))
 {
     return Utf8CharBytes(utf8) == 1 && ctype_func(utf8[0]);
 }
 
-static int IsForbiddenAtStart(const char *utf8)
+int IsForbiddenAtStart(const char *utf8)
 {
     static const char chars[] = ",)]｝、〕〉》」』】〙〗〟’”｠»"
 	"ゝゞーァィゥェォッャュョヮヵヶぁぃぅぇぉっゃゅょゎゕゖ"
@@ -111,9 +112,25 @@ static int IsForbiddenAtStart(const char *utf8)
 	"?!‼⁇⁈⁉"
 	"・:;/"
 	"。.";
+    size_t char_len;
 
-    for (const char *p = chars; *p != '\0'; p = Utf8AdvanceChar(p)) {
-	if (strncmp(utf8, p, Utf8CharBytes(p)) == 0)
+    for (const char *p = chars; *p != '\0'; p += char_len) {
+	char_len = Utf8CharBytes(p);
+	if (strncmp(utf8, p, char_len) == 0)
+	    return 1;
+    }
+    return 0;
+}
+
+int IsForbiddenAtEnd(const char *utf8)
+{
+    static const char chars[] = "([｛〔〈《「『【〘〖〝‘“｟«"
+	"—…‥〳〴〵";
+    size_t char_len;
+
+    for (const char *p = chars; *p != '\0'; p += char_len) {
+	char_len = Utf8CharBytes(p);
+	if (strncmp(utf8, p, char_len) == 0)
 	    return 1;
     }
     return 0;
@@ -134,10 +151,10 @@ int NextTokenBilingual(const char *utf8, size_t start, size_t *end)
 	do {
 	    p = Utf8AdvanceChar(p);
 	} while (*p && *p == ' ');
-    } else if (ctype(p, isalnum) || *p == '\'') {
+    } else if (CTypeOf(p, isalnum) || *p == '\'') {
 	do  {
 	    p = Utf8AdvanceChar(p);
-	} while (*p && (ctype(p, isalnum) || *p == '\''));
+	} while (*p && (CTypeOf(p, isalnum) || *p == '\''));
     } else {
 	p = Utf8AdvanceChar(p);
     }
@@ -147,4 +164,47 @@ int NextTokenBilingual(const char *utf8, size_t start, size_t *end)
 
     *end = p - utf8;
     return 1;
+}
+
+#include <stdarg.h>
+
+char *Format(const char *fmt, ...)
+{
+    va_list arguments;
+    int chars;
+    char *buffer = NULL;
+    int bufsize = 0;
+
+    while (1) {
+	va_start(arguments, fmt);
+	chars = vsnprintf(buffer, bufsize, fmt, arguments);
+	va_end(arguments);
+
+	if (chars < 0) {
+	    fprintf(stderr, "Format: error: vsnprintf(\"%s\", ...) returned %d\n", fmt, chars);
+	    exit(1);
+	} else if (chars < bufsize) {
+	    return buffer;
+	}
+	bufsize = chars + 1;
+	buffer = GC_MALLOC(bufsize);
+    }
+    fprintf(stderr, "Format: UNREACHABLE\n");
+    exit(1);
+}
+
+char *StringConcat(const char *strings[])
+{
+    size_t buffer_size = 0;
+    char *buffer;
+
+    for (int i = 0; strings[i] != NULL; i++) {
+	buffer_size += strlen(strings[i]);
+    }
+    buffer = GC_MALLOC(buffer_size + 1);
+    for (int i = 0; strings[i] != NULL; i++) {
+	// 非効率だけどシンプルだからこうする。
+	strcat(buffer, strings[i]);
+    }
+    return buffer;
 }

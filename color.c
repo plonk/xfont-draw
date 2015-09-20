@@ -18,8 +18,8 @@ typedef struct {
 
 #define MAX_COLORS 1024
 
-static XColorEntry x_color_table[1024];
-static size_t num_x_colors;
+// static XColorEntry x_color_table[1024];
+// static size_t num_x_colors;
 
 static XftColorEntry xft_color_table[1024];
 static size_t num_xft_colors;

@@ -14,6 +14,8 @@
 * xfont-im は XIM で日本語を入力できる。
 * xfont-draw-xft は xfont-draw の Xft 版。
 * xfont-eng-xft は xfont-eng の Xft 版。
+* xfont-editor-xft はエディタみたいなやつにしたい。
+* draw は xfont-editor-xft と同じプログラムだけど Motif のインターフェイスが付いている。
 
 ## プログラム内部のこと
 

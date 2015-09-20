@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <string.h>
 
 // m を n 個の整数l a[0] ~ a[n-1] に分割する。
 void Distribute(int m, size_t n, int a[])
@@ -97,3 +98,9 @@ int int_min(int a, int b)
 {
     return (a < b) ? a : b;
 }
+
+bool streq(const char *a, const char *b)
+{
+    return strcmp(a, b) == 0;
+}
+

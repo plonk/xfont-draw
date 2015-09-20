@@ -1,6 +1,8 @@
 #ifndef XFONT_EDITOR_XFT_H
 #define XFONT_EDITOR_XFT_H
 
+#define MAX_UTF8_CHAR_LENGTH 6
+
 typedef struct {
     size_t line;
     size_t token;
@@ -10,7 +12,7 @@ typedef struct {
 typedef struct {
     short x;
     short width;
-    char *utf8;
+    char utf8[MAX_UTF8_CHAR_LENGTH + 1];
     size_t length;
 } Character;
 
@@ -35,7 +37,6 @@ typedef struct {
     VisualLine *lines;
     size_t nlines;
     PageInfo *page;
-    size_t max_offset;
 } Document;
 
 #endif

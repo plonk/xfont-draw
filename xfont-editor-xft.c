@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
 	case Expose:
 	    puts("expose");
 	    GetPageInfo(&page);
-	    SetPageInfo(&page);
+	    ViewSetPageInfo(&page);
 	    Redraw();
 	    break;
 	case KeyPress:

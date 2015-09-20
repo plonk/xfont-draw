@@ -2,7 +2,9 @@
 #define UTIL_H
 
 #include <X11/Xlib.h>
+#include <stdbool.h>
 
+bool streq(const char *a, const char *b);
 XCharStruct *GetCharInfo(XFontStruct *font, unsigned char);
 XCharStruct *GetCharInfo16(XFontStruct *font, unsigned char byte1, unsigned char byte2);
 void InspectCharStruct(XCharStruct character);
