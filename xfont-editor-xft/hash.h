@@ -1,5 +1,5 @@
 #ifndef HASH_H
-#define HASH
+#define HASH_H
 
 typedef struct _String {
     const char *buf;

@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-g -Wall -std=c11 -I/usr/include/freetype2
-VIEW_SRCS=color.c document.c hash.c util.c utf8-string.c view.c
+VIEW_SRCS=color.c document.c hash.c util.c utf8-string.c view.c font.c
 VIEW_OBJS=$(VIEW_SRCS:.c=.o)
 TARGETS=editor draw
 LIBS=-lXft -lX11 -lXext -lfontconfig -lgc

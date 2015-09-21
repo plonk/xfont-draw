@@ -11,11 +11,12 @@
 #include "utf8-string.h"
 #include "view.h"
 #include "document.h"
-
+#include "font.h"
+				   
 static Display *disp;
 static Window win;
 static XdbeBackBuffer	 back_buffer;
-XftFont *font;
+YFont *font;
 
 static char *text;
 static Document *doc;
@@ -39,13 +40,6 @@ int LeadingBelowLine(XftFont *font)
 
     // 1ピクセルの余りがあれば行の下に割り当てられる。
     return lineSpacing / 2 + lineSpacing % 2;
-}
-
-int TextWidthUncached(XftFont *font, const char *str, int bytes)
-{
-    XGlyphInfo extents;
-    XftTextExtentsUtf8(disp, font, (FcChar8 *) str, bytes, &extents);
-    return extents.xOff;
 }
 
 static bool DRAW_BASELINE = 1;
@@ -81,36 +75,44 @@ void ViewSetOption(const char *name, bool b)
 
 static void DrawCursor(XftDraw *draw, short x, short y)
 {
+    XftFont *xft_font = font->xft_font;
+
     // 行の高さのカーソル。
     XftDrawRect(draw, ColorGetXftColor("magenta"),
-		x - 1, y - font->ascent - LeadingAboveLine(font),
-		2, font->height);
+		x - 1, y - xft_font->ascent - LeadingAboveLine(xft_font),
+		2, xft_font->height);
 };
 
 static void DrawLeadingAboveLine(XftDraw *draw, PageInfo *page, short y)
 {
+    XftFont *xft_font = font->xft_font;
+
     // 上の行間を描画する。
     if (DRAW_LEADING)
 	XftDrawRect(draw, ColorGetXftColor("navajo white"),
-		    page->margin_left, y - font->ascent - LeadingAboveLine(font),
-		    page->margin_right - page->margin_left, LeadingAboveLine(font));
+		    page->margin_left, y - xft_font->ascent - LeadingAboveLine(xft_font),
+		    page->margin_right - page->margin_left, LeadingAboveLine(xft_font));
 }
 
 static void DrawLeadingBelowLine(XftDraw *draw, PageInfo *page, short y)
 {
+    XftFont *xft_font = font->xft_font;
+
     // 下の行間を描画する。
     if (DRAW_LEADING)
 	XftDrawRect(draw, ColorGetXftColor("cornflower blue"),
-		    page->margin_left, y + font->descent,
-		    page->margin_right - page->margin_left, LeadingBelowLine(font));
+		    page->margin_left, y + xft_font->descent,
+		    page->margin_right - page->margin_left, LeadingBelowLine(xft_font));
 }
 
 static void DrawBaseline(XftDraw *draw, PageInfo *page, short y)
 {
+    XftFont *xft_font = font->xft_font;
+
     // 下線。
     if (DRAW_BASELINE)
 	XftDrawRect(draw, ColorGetXftColor("gray90"),
-		    page->margin_left, y + font->descent + LeadingBelowLine(font),
+		    page->margin_left, y + xft_font->descent + LeadingBelowLine(xft_font),
 		    page->margin_right - page->margin_left, 1);
 }
 
@@ -120,34 +122,51 @@ static void DrawNewline(XftDraw *draw, short x, short y)
     if (DRAW_NEWLINE)
 	XftDrawStringUtf8(draw,
 			  ColorGetXftColor("cyan4"),
-			  font,
+			  font->xft_font,
 			  x, y,
 			  (FcChar8 *) NEWLINE_SYMBOL, sizeof(NEWLINE_SYMBOL) - 1);
 }
 
 static void DrawSpace(XftDraw *draw, short x, short y, short width)
 {
+    XftFont *xft_font = font->xft_font;
+
     if (DRAW_SPACE)
 	XftDrawRect(draw, ColorGetXftColor("misty rose"),
-		    x, y - font->ascent,
-		    width, font->ascent + font->descent);
+		    x, y - xft_font->ascent,
+		    width, xft_font->ascent + xft_font->descent);
 }
 
 static void DrawPrintableToken(XftDraw *draw, Token *tok, short left_margin, short y)
 {
+    XftFont *xft_font = font->xft_font;
+
     for (int i = 0; i < tok->nchars; i++) {
+	int offset = 0;
+	if (strncmp(tok->chars[i].utf8, "『", tok->chars[i].length) == 0) {
+	    // 右寄せ。
+	    int glyph_width = YFontTextWidth(font, tok->chars[i].utf8, tok->chars[i].length);
+	    offset = -(glyph_width - tok->chars[i].width);
+	} else if (strncmp(tok->chars[i].utf8, "』", tok->chars[i].length) == 0) {
+	    // 左寄せ。
+	    offset = 0;
+	} else {
+	    offset = 0;
+	}
+	    
+
 	XftDrawStringUtf8(draw,
 			  ColorGetXftColor("black"),
-			  font,
-			  left_margin + tok->x + tok->chars[i].x, y,
+			  xft_font,
+			  left_margin + tok->x + tok->chars[i].x + offset, y,
 			  (FcChar8 *) tok->chars[i].utf8,
 			  strlen(tok->chars[i].utf8));
-	if (MARK_TOKENS)
-	    // トークン区切りをあらわす下線を引く。
-	    XftDrawRect(draw, ColorGetXftColor("green4"),
-			left_margin + tok->x + 2, y + font->descent + LeadingBelowLine(font) - 1,
-			tok->width - 4, 2);
     }
+    if (MARK_TOKENS)
+	// トークン区切りをあらわす下線を引く。
+	XftDrawRect(draw, ColorGetXftColor("green4"),
+		    left_margin + tok->x + 2, y + xft_font->descent + LeadingBelowLine(xft_font) - 1,
+		    tok->width - 4, 2);
 }
 
 #define EOF_SYMBOL "[EOF]"
@@ -157,7 +176,7 @@ static void DrawEOF(XftDraw *draw, short x, short y)
     if (DRAW_EOF)
 	XftDrawStringUtf8(draw,
 			  ColorGetXftColor("cyan4"),
-			  font,
+			  font->xft_font,
 			  x, y,
 			  (FcChar8 *) EOF_SYMBOL,
 			  sizeof(EOF_SYMBOL) - 1);
@@ -168,7 +187,7 @@ static void DrawTab(XftDraw *draw, Token *tok, short margin_left, short y)
 {
     XftDrawStringUtf8(draw,
 		      ColorGetXftColor("cyan4"),
-		      font,
+		      font->xft_font,
 		      margin_left + tok->x,
 		      y,
 		      (FcChar8 *) TAB_SYMBOL,
@@ -227,13 +246,15 @@ static void DrawLine(XftDraw *draw, PageInfo *page, VisualLine *lines, size_t in
 
 static size_t DrawDocument(XftDraw *draw, Document *doc, size_t start)
 {
-    short y = doc->page->margin_top + LeadingAboveLine(font) + font->ascent;
+    XftFont *xft_font = font->xft_font;
+    short y = doc->page->margin_top + LeadingAboveLine(xft_font) + xft_font->ascent;
 
     for (size_t i = start; i < doc->nlines; i++) {
 	DrawLine(draw, doc->page, doc->lines, i, y);
-	y += font->height;
+	y += xft_font->height;
 
-	short next_line_ink_bottom = y + LeadingAboveLine(font) + font->ascent + font->descent;
+	short next_line_ink_bottom =
+	    y + LeadingAboveLine(xft_font) + xft_font->ascent + xft_font->descent;
 	if (next_line_ink_bottom > doc->page->margin_bottom)
 	    return i;
     }
@@ -416,8 +437,8 @@ void ViewInitialize(Display *aDisp, Window aWin,
     win = aWin;
     ColorInitialize(disp);
     InitializeBackBuffer();
-    font = XftFontOpenName(disp, DefaultScreen(disp), FONT_DESCRIPTION);
-    puts(InspectXftFont(font));
+    font = YFontCreate(disp, FONT_DESCRIPTION);
+    puts(InspectXftFont(font->xft_font));
     text = GC_STRDUP(aText);
     cursor_path = (CursorPath) { 0, 0, 0 };
     doc = CreateDocument(text, page);

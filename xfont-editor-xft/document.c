@@ -11,8 +11,9 @@
 #include "utf8-string.h"
 #include "document.h"
 #include "hash.h"
+#include "font.h"
 
-extern XftFont *font;
+extern YFont *font;
 
 // EOF番兵文字のプロトタイプ
 static const Character EOF_CHARACTER =  {
@@ -21,33 +22,6 @@ static const Character EOF_CHARACTER =  {
     .utf8 = "",
     .length = 0
 };
-
-extern int TextWidthUncached(XftFont *font, const char *str, int bytes);
-
-// str から始まる bytes バイトの文字列の幅を算出する。
-int TextWidth(XftFont *aFont, const char *str, int bytes)
-{
-    static Hash *cache = NULL;
-
-    if (cache == NULL)
-	cache = HashCreateN(4096);
-
-    // デフォルトフォントでない場合はキャッシュしない。
-    if (aFont != font)
-	return TextWidthUncached(aFont, str, bytes);
-
-    String key = { str, bytes };
-
-    int *pWidth = HashGet(cache, key);
-
-    if (pWidth == NULL) {
-	pWidth = GC_MALLOC(sizeof(int));
-	*pWidth = TextWidthUncached(aFont, str, bytes);
-
-	HashSet(cache, key, pWidth);
-    }
-    return *pWidth;
-}
 
 bool CursorPathEquals(CursorPath a, CursorPath b)
 {
@@ -69,11 +43,17 @@ bool TokenIsNewline(Token *tok)
 void CharacterInitialize(Character *ch, short x, const char *utf8, size_t bytes)
 {
     assert(bytes <= MAX_UTF8_CHAR_LENGTH);
-    strncpy(ch->utf8, utf8, bytes);
+    memcpy(ch->utf8, utf8, bytes);
     ch->utf8[bytes] = '\0';
     ch->length = bytes;
     ch->x = x;
-    ch->width = TextWidth(font, ch->utf8, bytes);
+
+    if (strncmp(utf8, "『", bytes) == 0 ||
+	strncmp(utf8, "』", bytes) == 0) {
+	ch->width = YFontEm(font) / 2;
+    } else {
+	ch->width = YFontTextWidth(font, ch->utf8, bytes);
+    }
 }
 
 Token *TokenCreate()
@@ -175,7 +155,7 @@ void JustifyLine(VisualLine *line, const PageInfo *page)
 
     // ぶらさがっていない空白トークンに幅を分配する。
     int i = 0;
-    int SPACE_STRETCH_LIMIT = TextWidth(font, " ", 1) * 3;
+    int SPACE_STRETCH_LIMIT = YFontTextWidth(font, " ", 1) * 3;
     for (Token *tok = line->tokens; tok != trailing_space_start; tok++) {
 	if (TokenIsSpace(tok)) {
 	    int addend = (addends[i] > SPACE_STRETCH_LIMIT) ? SPACE_STRETCH_LIMIT : addends[i];
@@ -198,7 +178,7 @@ void JustifyLine(VisualLine *line, const PageInfo *page)
 	return;
     }
 
-    short MAX_TRACK_DELTA = (short) (EmPixels(font) / 8.0);
+    short MAX_TRACK_DELTA = (short) (YFontEm(font) / 8.0);
 
     if (shortage == 0) {
 	return;
@@ -335,7 +315,7 @@ void VisualLineAddToken(VisualLine *line, Token *tok)
     }
     line->tokens[line->ntokens].x = x;
     if (line->tokens[line->ntokens].chars[0].utf8[0] == '\t') {
-	short tab_width = TextWidth(font, " ", 1) * 8; 
+	short tab_width = YFontTextWidth(font, " ", 1) * 8; 
 	line->tokens[line->ntokens].width = (x / tab_width + 1) * tab_width - x;
     }
     line->ntokens++;
@@ -359,14 +339,6 @@ short VisualLineGetWidth(VisualLine *line)
 	return line->tokens[line->ntokens - 1].x + line->tokens[line->ntokens - 1].width;
 }
 
-double EmPixels(XftFont *font)
-{
-    double em;
-
-    FcPatternGetDouble(font->pattern, FC_PIXEL_SIZE, 0, &em);
-    return em;
-}
-
 Token *FillLine(VisualLine **line_return, Token *input, const PageInfo *page)
 {
     assert (input != NULL);
@@ -376,7 +348,7 @@ Token *FillLine(VisualLine **line_return, Token *input, const PageInfo *page)
 
     while (1) {
 	if (!(line->ntokens == 0 || TokenIsSpace(input))) {
-	    bool line_is_full = VisualLineGetWidth(line) + input->width > visible_width + (short) (EmPixels(font) * 0.75);
+	    bool line_is_full = VisualLineGetWidth(line) + input->width > visible_width + (short) (YFontEm(font) * 0.75);
 	    if (line_is_full) {
 		// このトークンの追加をキャンセルする。
 		break;
