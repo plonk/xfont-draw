@@ -48,12 +48,7 @@ void CharacterInitialize(Character *ch, short x, const char *utf8, size_t bytes)
     ch->length = bytes;
     ch->x = x;
 
-    if (strncmp(utf8, "『", bytes) == 0 ||
-	strncmp(utf8, "』", bytes) == 0) {
-	ch->width = YFontEm(font) / 2;
-    } else {
-	ch->width = YFontTextWidth(font, ch->utf8, bytes);
-    }
+    ch->width = YFontTextWidth(font, ch->utf8, bytes);
 }
 
 Token *TokenCreate()
@@ -108,6 +103,16 @@ Token *EffectiveLineEnd(VisualLine *line)
 	}
     }
     return &line->tokens[index + 1];
+}
+
+void MendToken(Token* tok)
+{
+    short x = 0;
+    for (Character *ch = tok->chars; ch < tok->chars + tok->nchars; ch++) {
+	ch->x = x;
+	x += ch->width;
+    }
+    tok->width = tok->chars[tok->nchars - 1].x + tok->chars[tok->nchars - 1].width;
 }
 
 // トークンの幅を元にトークンの x 座標を再計算する。
@@ -390,6 +395,8 @@ void InspectPageInfo(const PageInfo *page)
     printf(">\n");
 }
 
+void SetContextualCharacterWidths(VisualLine *line);
+
 VisualLine *CreateLines(Token *tokens, size_t ntokens, const PageInfo *page, size_t *nlines_return)
 {
     VisualLine *lines = NULL;
@@ -402,8 +409,10 @@ VisualLine *CreateLines(Token *tokens, size_t ntokens, const PageInfo *page, siz
 	lines = GC_REALLOC(lines, (nlines + 1) * sizeof(VisualLine));
 	tok = FillLine(&line, tok, page);
 
+	SetContextualCharacterWidths(line);
+
  	if (!LastLineOfParagraph(line))
-	    JustifyLine(line, page);
+	JustifyLine(line, page);
 
 	lines[nlines] = *line;
 	nlines++;
@@ -413,10 +422,28 @@ VisualLine *CreateLines(Token *tokens, size_t ntokens, const PageInfo *page, siz
     return lines;
 }
 
-void TokenResetWidth(Token *tok)
+void SetContextualCharacterWidths(VisualLine *line)
 {
-    assert(tok->nchars > 0);
-    tok->width = tok->chars[tok->nchars - 1].x + tok->chars[tok->nchars - 1].width;
+    Token *last_visible_token = EffectiveLineEnd(line);
+
+    for (int i = 0; i < line->ntokens; i++) {
+	bool last_token = (&line->tokens[i] + 1) == last_visible_token;
+
+	for (int j = 0; j < line->tokens[i].nchars; j++) {
+	    bool line_end = last_token && (j == line->tokens[i].nchars - 1);
+	    bool line_beginning = (i == 0 && j == 0);
+	    Character *ch = &line->tokens[i].chars[j];
+
+	    if (Utf8IsAnyOf(ch->utf8, CC_OPEN_PAREN)) {
+		ch->width = (line_beginning) ? YFontEm(font) / 2 : YFontEm(font);
+	    }
+	    if (Utf8IsAnyOf(ch->utf8, CC_CLOSE_PAREN CC_PERIOD CC_COMMA)) {
+		ch->width = (line_end) ? YFontEm(font) / 2 : YFontEm(font);
+	    }
+	}
+	MendToken(&line->tokens[i]);
+    }
+    UpdateTokenPositions(line);
 }
 
 Token *ExtractTokens(Document *doc, size_t *ntokens_return)
@@ -432,7 +459,6 @@ Token *ExtractTokens(Document *doc, size_t *ntokens_return)
     for (int i = 0; i < doc->nlines; i++) {
 	for (int j = 0; j < doc->lines[i].ntokens; j++) {
 	    tokens[k] = doc->lines[i].tokens[j];
-	    TokenResetWidth(&tokens[k]);
 	    k++;
 	}
     }
@@ -442,10 +468,47 @@ Token *ExtractTokens(Document *doc, size_t *ntokens_return)
     return tokens;
 }
 
+void ResetCharacterWidth(Character *ch)
+{
+    ch->width = YFontTextWidth(font, ch->utf8, ch->length);
+}
+
+Character **ExtractCharacters(Document *doc, size_t *nchars_return)
+{
+    size_t nchars = 0;
+    for (CursorPath it = (CursorPath) { 0, 0, 0 };
+	 !CharacterIsEOF(CursorPathGetCharacter(doc, it));
+	 it = CursorPathForward(doc, it)) {
+	nchars++;
+    }
+    nchars++; // EOFもカウントする
+
+    Character **chars = GC_MALLOC(sizeof(Character *) * nchars);
+    
+    int i = 0;
+    for (CursorPath it = (CursorPath) { 0, 0, 0 };
+	 true;
+	 it = CursorPathForward(doc, it)) {
+	chars[i++] = CursorPathGetCharacter(doc, it);
+	if (CharacterIsEOF(CursorPathGetCharacter(doc, it)))
+	    break;
+    }
+
+    *nchars_return = nchars;
+    return chars;
+}
+
 void MendDocument(Document *doc)
 {
+    size_t nchars;
+    Character **chars = ExtractCharacters(doc, &nchars);
+    for (int i = 0; i < nchars; i++)
+	ResetCharacterWidth(chars[i]);
+
     size_t ntokens;
     Token *tokens = ExtractTokens(doc, &ntokens);
+    for (int i = 0; i < ntokens; i++)
+	MendToken(&tokens[i]);
 
     doc->lines = CreateLines(tokens, ntokens, doc->page, &doc->nlines);
 }

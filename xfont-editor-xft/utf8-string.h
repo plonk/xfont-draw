@@ -3,6 +3,20 @@
 
 #include <sys/types.h>
 
+//// 文字クラス定義
+// 始め括弧類
+#define CC_OPEN_PAREN "「『（"
+// 終わり括弧類
+#define CC_CLOSE_PAREN "」』）"
+// 読点類
+#define CC_COMMA "、，"
+// 句点類
+#define CC_PERIOD "。．"
+// 中点類
+#define CC_MIDDLE_DOT "・：；"
+
+//// プロトタイプ宣言
+int Utf8IsAnyOf(const char *utf8, const char *klass);
 char *StringConcat(const char *strings[]);
 char *Format(const char *fmt, ...);
 int IsForbiddenAtEnd(const char *utf8);

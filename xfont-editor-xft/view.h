@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include "editor.h"
 
-void ViewSetOption(const char *name, bool b);
+void ViewSetOption(const char *name, const char *value);
 void Redraw();
 Document *CreateDocument(const char *text, const PageInfo *page);
 CursorPath ToCursorPath(Document *doc, size_t offset);

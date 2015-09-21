@@ -73,10 +73,11 @@ PageInfo *GetPageInfo(Display *disp, Window win)
     return page;
 }
 
-void read_view_options(int *argc, char *argv[], const char* names[], bool values[])
+// argc, argv を解釈し、names, values にオプションを追加する。
+void read_view_options(int *argc, char *argv[], const char* names[], const char *values[])
 {
-    int j = 0;
-    int k = 0;
+    int j = 0; // argv への書き込み位置インデックス。
+    int k = 0; // names, values へのインデックス。
 
     // -dOPTION -dOPTION=0 形式のオプションを認識する。
     for (int i = 0; i < *argc && k < 10; i++) {
@@ -86,12 +87,12 @@ void read_view_options(int *argc, char *argv[], const char* names[], bool values
 
 	    if (equals == NULL) {
 		names[k] = GC_STRDUP(exp);
-		values[k] = true;
+		values[k] = "1";
 	    } else {
 		names[k] = GC_STRNDUP(exp, equals - exp);
-		values[k] = atoi(equals + 1);
+		values[k] = equals + 1;
 	    }
-	    printf("%s is %d\n", names[k], values[k]);
+	    printf("%s is %s\n", names[k], values[k]);
 	    k++;
 	} else {
 	    argv[j++] = argv[i];
@@ -148,7 +149,7 @@ int main(int argc, char *argv[])
 
 
     const char *names[10];
-    bool values[10];
+    const char *values[10];
     read_view_options(&argc, argv, names, values);
 
     if (argc != 2) {
@@ -158,14 +159,14 @@ int main(int argc, char *argv[])
        
     const char *text = ReadFile(argv[1]);
 
-    PageInfo *page;
-    page = GetPageInfo(XtDisplay(draw), XtWindow(draw));
-    ViewInitialize(XtDisplay(draw), XtWindow(draw), text, page);
-
     for (int i = 0; i < 10 && names[i] != NULL; i++) {
 	ViewSetOption(names[i], values[i]);
     }
        
+    PageInfo *page;
+    page = GetPageInfo(XtDisplay(draw), XtWindow(draw));
+    ViewInitialize(XtDisplay(draw), XtWindow(draw), text, page);
+
     XtAddEventHandler(draw, KeyPressMask, False, 
 		      keypress_callbck, NULL);
 

@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <gc.h>
+#include <assert.h>
 
 #include "utf8-string.h"
 
@@ -91,6 +92,22 @@ char *ReadFile(const char *filepath)
     fclose(file);
 
     return buf;
+}
+
+int Utf8IsAnyOf(const char *utf8, const char *klass)
+{
+    assert(utf8 != NULL);
+
+    if (*utf8 == '\0')
+	return 0;
+
+    size_t char_len;
+    for (const char *p = klass; *p != '\0'; p += char_len) {
+	char_len = Utf8CharBytes(p);
+	if (strncmp(utf8, p, char_len) == 0)
+	    return 1;
+    }
+    return 0;
 }
 
 /* static int IsAsciiPrintable(const char *p) */

@@ -26,22 +26,6 @@ static size_t top_line;
 
 #define MAX_LINES 1024
 
-// 行の上に置くべき行間を算出する。
-int LeadingAboveLine(XftFont *font)
-{
-    int lineSpacing = font->height - (font->ascent + font->descent);
-
-    return lineSpacing / 2;
-}
-
-int LeadingBelowLine(XftFont *font)
-{
-    int lineSpacing = font->height - (font->ascent + font->descent);
-
-    // 1ピクセルの余りがあれば行の下に割り当てられる。
-    return lineSpacing / 2 + lineSpacing % 2;
-}
-
 static bool DRAW_BASELINE = 1;
 static bool DRAW_LEADING = 0;
 static bool DRAW_SPACE = 0;
@@ -50,27 +34,55 @@ static bool MARK_MARGINS = 0;
 static bool DRAW_EOF = 0;
 static bool MARK_TOKENS = 0;
 
-void ViewSetOption(const char *name, bool b)
+#define DEFAULT_FONT_DESC "Source Han Sans JP-16:matrix=1 0 0 1"
+static const char *FONT_DESC = DEFAULT_FONT_DESC;
+
+static short LINE_HEIGHT = -1;
+
+#define SET_OPTION_BOOL(param) if (streq(name, #param)) { param = (bool) atoi(value); goto Set; }
+#define SET_OPTION_STRING(param) if (streq(name, #param)) { param = GC_STRDUP(value); goto Set; }
+#define SET_OPTION_SHORT(param) if (streq(name, #param)) { param = (short) atoi(value); goto Set; }
+void ViewSetOption(const char *name, const char *value)
 {
-#define SET_OPTION(param) if (streq(name, #param)) { param = b; goto Set; }
+    SET_OPTION_BOOL(DRAW_BASELINE);
+    SET_OPTION_BOOL(DRAW_LEADING);
+    SET_OPTION_BOOL(DRAW_SPACE);
+    SET_OPTION_BOOL(DRAW_SPACE);
+    SET_OPTION_BOOL(DRAW_NEWLINE);
+    SET_OPTION_BOOL(MARK_MARGINS);
+    SET_OPTION_BOOL(DRAW_EOF);
+    SET_OPTION_BOOL(MARK_TOKENS);
 
-    SET_OPTION(DRAW_BASELINE);
-    SET_OPTION(DRAW_LEADING);
-    SET_OPTION(DRAW_SPACE);
-    SET_OPTION(DRAW_SPACE);
-    SET_OPTION(DRAW_NEWLINE);
-    SET_OPTION(MARK_MARGINS);
-    SET_OPTION(DRAW_EOF);
-    SET_OPTION(MARK_TOKENS);
+    SET_OPTION_STRING(FONT_DESC);
 
-#undef SET_OPTION
+    SET_OPTION_SHORT(LINE_HEIGHT);
+
 
     fprintf(stderr, "Warning: unknown option %s\n", InspectString(name));
     return;
 
  Set:
-    Redraw();
+    // Redraw();
     return;
+}
+#undef SET_OPTION_BOOL
+#undef SET_OPTION_STRING
+#undef SET_OPTION_SHORT
+
+// 行の上に置くべき行間を算出する。
+int LeadingAboveLine(XftFont *font)
+{
+    int lineSpacing = LINE_HEIGHT - (font->ascent + font->descent);
+
+    return lineSpacing / 2;
+}
+
+int LeadingBelowLine(XftFont *font)
+{
+    int lineSpacing = LINE_HEIGHT - (font->ascent + font->descent);
+
+    // 1ピクセルの余りがあれば行の下に割り当てられる。
+    return lineSpacing / 2 + lineSpacing % 2;
 }
 
 static void DrawCursor(XftDraw *draw, short x, short y)
@@ -80,7 +92,7 @@ static void DrawCursor(XftDraw *draw, short x, short y)
     // 行の高さのカーソル。
     XftDrawRect(draw, ColorGetXftColor("magenta"),
 		x - 1, y - xft_font->ascent - LeadingAboveLine(xft_font),
-		2, xft_font->height);
+		2, LINE_HEIGHT);
 };
 
 static void DrawLeadingAboveLine(XftDraw *draw, PageInfo *page, short y)
@@ -137,19 +149,34 @@ static void DrawSpace(XftDraw *draw, short x, short y, short width)
 		    width, xft_font->ascent + xft_font->descent);
 }
 
+void InspectXGlyphInfo(XGlyphInfo *extents)
+{
+    printf("width = %hu\n", extents->width);
+    printf("height = %hu\n", extents->height);
+    printf("x = %hd\n", extents->x);
+    printf("y = %hd\n", extents->y);
+    printf("xOff = %hd\n", extents->xOff);
+    printf("yOff = %hd\n", extents->yOff);
+}
+
 static void DrawPrintableToken(XftDraw *draw, Token *tok, short left_margin, short y)
 {
     XftFont *xft_font = font->xft_font;
 
     for (int i = 0; i < tok->nchars; i++) {
-	int offset = 0;
-	if (strncmp(tok->chars[i].utf8, "『", tok->chars[i].length) == 0) {
+	Character *ch = &tok->chars[i];
+
+	int offset;
+	if (Utf8IsAnyOf(ch->utf8, CC_OPEN_PAREN)) {
 	    // 右寄せ。
-	    int glyph_width = YFontTextWidth(font, tok->chars[i].utf8, tok->chars[i].length);
-	    offset = -(glyph_width - tok->chars[i].width);
-	} else if (strncmp(tok->chars[i].utf8, "』", tok->chars[i].length) == 0) {
-	    // 左寄せ。
-	    offset = 0;
+	    int glyph_width = YFontTextWidth(font, ch->utf8, ch->length);
+	    offset = -(glyph_width - ch->width);
+	} else if (Utf8IsAnyOf(ch->utf8, CC_MIDDLE_DOT)) {
+	    XGlyphInfo extents;
+	    YFontTextExtents(font, ch->utf8, ch->length, &extents);
+	    // offset = extents.x - extents.width / 2 + extents.xOff / 4;
+	    offset =
+		(ch->width - extents.width) / 2 + extents.x;
 	} else {
 	    offset = 0;
 	}
@@ -158,9 +185,9 @@ static void DrawPrintableToken(XftDraw *draw, Token *tok, short left_margin, sho
 	XftDrawStringUtf8(draw,
 			  ColorGetXftColor("black"),
 			  xft_font,
-			  left_margin + tok->x + tok->chars[i].x + offset, y,
-			  (FcChar8 *) tok->chars[i].utf8,
-			  strlen(tok->chars[i].utf8));
+			  left_margin + tok->x + ch->x + offset, y,
+			  (FcChar8 *) ch->utf8,
+			  strlen(ch->utf8));
     }
     if (MARK_TOKENS)
 	// トークン区切りをあらわす下線を引く。
@@ -251,7 +278,7 @@ static size_t DrawDocument(XftDraw *draw, Document *doc, size_t start)
 
     for (size_t i = start; i < doc->nlines; i++) {
 	DrawLine(draw, doc->page, doc->lines, i, y);
-	y += xft_font->height;
+	y += LINE_HEIGHT;
 
 	short next_line_ink_bottom =
 	    y + LeadingAboveLine(xft_font) + xft_font->ascent + xft_font->descent;
@@ -428,8 +455,6 @@ char *InspectXftFont(XftFont *font)
 		 InspectFcPattern(font->pattern));
 }
 
-#define FONT_DESCRIPTION "Source Han Sans JP-16:matrix=1 0 0 1"
-
 void ViewInitialize(Display *aDisp, Window aWin, 
 		    const char *aText, PageInfo *page)
 {
@@ -437,7 +462,15 @@ void ViewInitialize(Display *aDisp, Window aWin,
     win = aWin;
     ColorInitialize(disp);
     InitializeBackBuffer();
-    font = YFontCreate(disp, FONT_DESCRIPTION);
+    font = YFontCreate(disp, FONT_DESC);
+    // フォントに設定されている高さを設定する。
+    if (LINE_HEIGHT == -1) {
+	LINE_HEIGHT = font->xft_font->height;
+    }
+    if (font == NULL) {
+	fprintf(stderr, "no such font: %s\n", FONT_DESC);
+	exit(1);
+    }
     puts(InspectXftFont(font->xft_font));
     text = GC_STRDUP(aText);
     cursor_path = (CursorPath) { 0, 0, 0 };

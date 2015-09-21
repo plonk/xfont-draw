@@ -17,6 +17,11 @@ YFont *YFontCreate(Display *disp, const char *font_desc)
     return font;
 }
 
+void YFontTextExtents(YFont *font, const char *str, int bytes, XGlyphInfo *extents_return)
+{
+    XftTextExtentsUtf8 (font->disp, font->xft_font, (FcChar8 *) str, bytes, extents_return);
+}
+
 static int TextWidthUncached(YFont *font, const char *str, int bytes)
 {
     XGlyphInfo extents;

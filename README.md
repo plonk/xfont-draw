@@ -70,9 +70,18 @@ Unicodeから JIS X 0208 や ISO-8859-1 に変換する必要がある。Unicode
 
 そのまま Unicode フォントを使ったほうが簡単か…
 
+### 文字クラス
+
+始め括弧類
+終わり括弧類
+読点類
+句点類
+中点類
+
 ## 参考にしているサイト
 
 * [Double Buffer Extension Library](http://www.x.org/releases/X11R7.7/doc/libXext/dbelib.html)
 * [Chapter 11. Internationalized Text Input](http://menehune.opt.wfu.edu/Kokua/Irix_6.5.21_doc_cd/usr/share/Insight/library/SGI_bookshelves/SGI_Developer/books/XLib_PG/sgi_html/ch11.html)
+* [X Window/Motif Programming](http://www.cs.cf.ac.uk/Dave/X_lecture/X_book_caller/)
 
 ## 

@@ -17,5 +17,6 @@ YFont *YFontCreate(Display *disp, const char *font_description);
 int YFontTextWidth(YFont *, const char *str, int bytes);
 void YFontDestroy(YFont *);
 double YFontEm(YFont *font);
+void YFontTextExtents(YFont *font, const char *str, int bytes, XGlyphInfo *extents_return);
 
 #endif
