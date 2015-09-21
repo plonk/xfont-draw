@@ -263,8 +263,10 @@ Character *Tokenize(Character *ch, Token *tok)
 		 streq(ch->utf8, ","));
     } else {
 	if (CharacterIsEOF(ch) || streq(ch->utf8, "\n")) {
-	    TokenAddCharacter(tok, ch);
-	    ch++;
+	    if (tok->nchars == 0) {  // EOF と NL は前の行頭禁止文字に連結しない。
+		TokenAddCharacter(tok, ch);
+		ch++;
+	    }
 	    goto End;
 	} else {
 	    TokenAddCharacter(tok, ch);
