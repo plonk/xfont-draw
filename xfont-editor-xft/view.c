@@ -39,6 +39,29 @@ static const char *FONT_DESC = DEFAULT_FONT_DESC;
 
 static short LINE_HEIGHT = -1;
 
+// ファイルローカルな関数の宣言。
+static char *InspectString(const char *str);
+static char *InspectFcPattern(FcPattern *pat);
+static char *InspectXftFont(XftFont *font);
+static int LeadingAboveLine(XftFont *font);
+static int LeadingBelowLine(XftFont *font);
+static size_t DrawDocument(XftDraw *draw, Document *doc, size_t start);
+static void DrawCursor(XftDraw *draw, short x, short y);
+static void DrawLeadingAboveLine(XftDraw *draw, PageInfo *page, short y);
+static void DrawLeadingBelowLine(XftDraw *draw, PageInfo *page, short y);
+static void DrawBaseline(XftDraw *draw, PageInfo *page, short y);
+static void DrawNewline(XftDraw *draw, short x, short y);
+static void DrawSpace(XftDraw *draw, short x, short y, short width);
+static void InspectXGlyphInfo(XGlyphInfo *extents);
+static void DrawPrintableToken(XftDraw *draw, Token *tok, short left_margin, short y);
+static void DrawEOF(XftDraw *draw, short x, short y);
+static void DrawTab(XftDraw *draw, Token *tok, short margin_left, short y);
+static void DrawToken(XftDraw *draw, Token *tok, PageInfo *page, short y);
+static void DrawLineBefore(XftDraw *draw, PageInfo *page, short y);
+static void DrawLine(XftDraw *draw, PageInfo *page, VisualLine *lines, size_t index, short y);
+static void MarkMargins(PageInfo *page);
+static void InitializeBackBuffer(void);
+
 #define SET_OPTION_BOOL(param) if (streq(name, #param)) { param = (bool) atoi(value); goto Set; }
 #define SET_OPTION_STRING(param) if (streq(name, #param)) { param = GC_STRDUP(value); goto Set; }
 #define SET_OPTION_SHORT(param) if (streq(name, #param)) { param = (short) atoi(value); goto Set; }
@@ -70,14 +93,14 @@ void ViewSetOption(const char *name, const char *value)
 #undef SET_OPTION_SHORT
 
 // 行の上に置くべき行間を算出する。
-int LeadingAboveLine(XftFont *font)
+static int LeadingAboveLine(XftFont *font)
 {
     int lineSpacing = LINE_HEIGHT - (font->ascent + font->descent);
 
     return lineSpacing / 2;
 }
 
-int LeadingBelowLine(XftFont *font)
+static int LeadingBelowLine(XftFont *font)
 {
     int lineSpacing = LINE_HEIGHT - (font->ascent + font->descent);
 
@@ -149,7 +172,7 @@ static void DrawSpace(XftDraw *draw, short x, short y, short width)
 		    width, xft_font->ascent + xft_font->descent);
 }
 
-void InspectXGlyphInfo(XGlyphInfo *extents)
+static void InspectXGlyphInfo(XGlyphInfo *extents)
 {
     printf("width = %hu\n", extents->width);
     printf("height = %hu\n", extents->height);
@@ -322,7 +345,7 @@ static void MarkMargins(PageInfo *page)
     XFreeGC(disp, gc);
 }
 
-void Redraw()
+void ViewRedraw()
 {
     if (doc->page->width < doc->page->margin_left * 2) {
 	fprintf(stderr, "Viewport size too small.\n");
@@ -357,7 +380,7 @@ void Redraw()
 }
 
 
-void InitializeBackBuffer()
+static void InitializeBackBuffer()
 {
     Status st;
     int major, minor;
@@ -371,7 +394,7 @@ void InitializeBackBuffer()
     back_buffer = XdbeAllocateBackBufferName(disp, win, XdbeUndefined);
 }
 
-char *InspectString(const char *str)
+static char *InspectString(const char *str)
 {
     // 一部の制御文字をバックスラッシュ表現にエスケープする。
 #define BACKSLASH "\\"
@@ -421,7 +444,7 @@ char *InspectString(const char *str)
     return res;
 }
 
-char *InspectFcPattern(FcPattern *pat)
+static char *InspectFcPattern(FcPattern *pat)
 {
 #define STRING_PROPERTY(name) ({ FcChar8 *s; FcPatternGetString(pat, name, 0, &s); Format(name "=%s ", InspectString((char*)s)); })
 #define DOUBLE_PROPERTY(name) ({ double d; FcPatternGetDouble(pat, name, 0, &d); Format(name "=%g ", d); })
@@ -439,7 +462,8 @@ char *InspectFcPattern(FcPattern *pat)
 #undef STRING_PROPERTY
 #undef DOUBLE_PROPERTY
 }
-char *InspectXftFont(XftFont *font)
+
+static char *InspectXftFont(XftFont *font)
 {
     return Format("#<XftFont:%p "
 		 "ascent=%d "

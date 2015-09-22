@@ -75,7 +75,7 @@ void HandleKeyPress(XKeyEvent *ev)
     }
 
     if (needs_redraw) {
-	Redraw();
+	ViewRedraw();
     }
 }
 
@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
 	    puts("expose");
 	    GetPageInfo(&page);
 	    ViewSetPageInfo(&page);
-	    Redraw();
+	    ViewRedraw();
 	    break;
 	case KeyPress:
 	    puts("keypress");

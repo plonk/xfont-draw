@@ -44,7 +44,7 @@ void HandleKeyPress(XKeyEvent *ev)
     }
 
     if (needs_redraw) {
-	Redraw();
+	ViewRedraw();
     }
 }
 
@@ -190,7 +190,7 @@ draw_cbk(Widget w, XtPointer data,
 	exit(1);
     } 
 
-    Redraw();
+    ViewRedraw();
 }
 
 void resize_cbk(Widget draw, XtPointer data,
@@ -202,5 +202,5 @@ void resize_cbk(Widget draw, XtPointer data,
     PageInfo *page;
     page = GetPageInfo(XtDisplay(draw), XtWindow(draw));
     ViewSetPageInfo(page);
-    Redraw();
+    ViewRedraw();
 }

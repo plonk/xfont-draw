@@ -2,19 +2,15 @@
 #define XFONT_EDITOR_XFT_VIEW_H
 
 #include <stdbool.h>
-#include "editor.h"
+#include "document.h"
 
-void ViewSetOption(const char *name, const char *value);
-void Redraw();
-Document *CreateDocument(const char *text, const PageInfo *page);
-CursorPath ToCursorPath(Document *doc, size_t offset);
 void ViewInitialize(Display *aDisp, Window aWin, const char *aText, PageInfo *page);
-bool ViewForwardCursor();
-bool ViewBackwardCursor();
-bool ViewUpwardCursor();
-bool ViewDownwardCursor();
-
-char *InspectString(const char *str);
+void ViewRedraw(void);
+void ViewSetOption(const char *name, const char *value);
 void ViewSetPageInfo(PageInfo *page);
+bool ViewBackwardCursor(void);
+bool ViewDownwardCursor(void);
+bool ViewForwardCursor(void);
+bool ViewUpwardCursor(void);
 
 #endif
